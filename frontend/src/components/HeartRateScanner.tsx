@@ -97,7 +97,9 @@ export function HeartRateScanner({ t, value, onChange }: { t: Strings; value: He
   };
 
   const reasonText = (r: string) =>
-    r === 'too_dark' ? t.reason_too_dark : r === 'too_much_movement' ? t.reason_too_much_movement : t.reason_face_not_visible;
+    r === 'too_dark' ? t.reason_too_dark
+      : r === 'too_much_movement' || r === 'weak_signal' ? t.reason_too_much_movement  // weak pulse signal: hold still and retry
+      : t.reason_face_not_visible;
 
   return (
     <div className="stack">

@@ -38,7 +38,7 @@ export function SummaryScreen({ lang, f, hr, assessment, facility }: {
               ))}
             </td>
           </tr>
-          {facility && <tr><th>{t.s_facility}</th><td>{facility.name}, {facility.phone}</td></tr>}
+          {facility && <tr><th>{t.s_facility}</th><td>{facility.name}{facility.phone ? `, ${facility.phone}` : ''}</td></tr>}
         </tbody>
       </table>
       <p className="small muted">{t.disclaimer}</p>

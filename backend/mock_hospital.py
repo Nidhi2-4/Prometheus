@@ -23,7 +23,9 @@ def doctor(specialty):
 
 while True:
     for f in FACILITIES:
-        specialties = ["general"] + (["gynaecology"] if "maternity" in f["services"] else [])
+        # Keep each facility's real mix of specialties (a women's hospital has no general doctor).
+        seed = [d["specialty"] for d in f.get("availability", {}).get("doctors", [])]
+        specialties = seed or ["general"] + (["gynaecology"] if "maternity" in f["services"] else [])
         body = {"facility_id": f["id"], "doctors": [doctor(s) for s in specialties],
                 "queue_wait_min": random.choice([5, 10, 20, 30, 60]),
                 "updated_at": datetime.now(timezone.utc).isoformat()}
