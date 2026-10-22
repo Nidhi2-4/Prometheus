@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+itsdangerous
+numpy
+scipy
+scikit-learn==1.9.1  # must match the version the models were trained with
+lightgbm
+joblib
+shap
+httpx
+pytest

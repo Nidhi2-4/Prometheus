@@ -1,0 +1,20 @@
+{
+  "threshold": 0.3103448275862069,
+  "internal_auroc": 0.8414964752442593,
+  "external_auroc": 0.8163130889966809,
+  "features": [
+    "age",
+    "sex_female",
+    "bmi",
+    "waist_cm",
+    "waist_to_height",
+    "smoking_status",
+    "alcohol_days_per_year",
+    "alcohol_drinks_per_day",
+    "leisure_mvpa_min_wk",
+    "sedentary_min_day",
+    "known_diabetes",
+    "borderline_diabetes",
+    "sleep_hours"
+  ]
+}
