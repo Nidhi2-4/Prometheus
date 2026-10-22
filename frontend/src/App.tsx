@@ -295,15 +295,6 @@ export default function App() {
         <select aria-label="Language" value={lang} onChange={(e) => setLang(e.target.value as Language)}>
           {LANGS.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
         </select>
-        <button
-          type="button"
-          className="btn btn-small"
-          onClick={() => setShowModels(true)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px', background: 'rgba(255,255,255,0.15)', color: 'var(--paper)', border: '1px solid var(--mint)', cursor: 'pointer' }}
-          title="Inspect AI Models & Status"
-        >
-          <Cpu size={16} /> Models
-        </button>
         <a className="btn btn-danger btn-small" href="tel:108"><Phone size={18} /> 108</a>
         </div>
       </header>
