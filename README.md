@@ -1,4 +1,4 @@
-# Swasthik (Prometheus Healthcare)
+# Swasthik
 
 > **AI-Powered Early Health Risk Detection & Healthcare Access Navigation**  
 > *"Check early. Reach care faster."*
