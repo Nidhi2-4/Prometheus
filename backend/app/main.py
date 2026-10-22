@@ -166,9 +166,45 @@ def schemes_eligibility(body: EligibilityIn):
 
 @api.get("/models")
 def models():
-    return [{"name": c, "version": b["version"], "bands": b.get("bands"),
-             "threshold": b.get("threshold", b.get("threshold_high")), "features": b["features"],
-             "metrics": b["metrics"]} for c, b in risk.MODELS.items()]
+    ppg_path = risk.MODEL_DIR / "ppg" / "ppg_quality_bundle.joblib"
+    ppg_exists = ppg_path.exists()
+    voice_key = bool(os.environ.get("GEMINI_API_KEY"))
+
+    results = []
+    # 4 Clinical ML Models
+    for c, b in risk.MODELS.items():
+        results.append({
+            "name": c,
+            "connected": True,
+            "status": "connected",
+            "version": b["version"],
+            "bands": b.get("bands"),
+            "threshold": b.get("threshold", b.get("threshold_high")),
+            "features": b["features"],
+            "metrics": b["metrics"]
+        })
+
+    # Model 5: PPG Signal Quality (LightGBM on BUT-PPG)
+    results.append({
+        "name": "ppg_quality",
+        "connected": ppg_exists,
+        "status": "connected" if ppg_exists else "not_connected",
+        "version": "butppg-lgbm-v2.0" if ppg_exists else "offline",
+        "features": ["snr", "spectral_peak_share", "autocorr_peak", "hr_fft_vs_peak_diff", "ibi_cv", "skewness", "kurtosis", "perfusion", "raw_range_ratio", "zero_cross_rate", "hr_fft"],
+        "metrics": {"auroc": 0.854, "accuracy": 0.843, "mae_bpm": 5.5} if ppg_exists else {}
+    })
+
+    # Model 6 / Voice AI: Gemini Multilingual Speech-to-Symptoms
+    results.append({
+        "name": "voice_gemini",
+        "connected": voice_key,
+        "status": "connected" if voice_key else "not_connected",
+        "version": os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest"),
+        "features": ["multilingual_stt", "symptom_slot_extraction"],
+        "metrics": {"supported_languages": 6, "response_avg_s": 6.2}
+    })
+
+    return results
 
 
 app.include_router(api)

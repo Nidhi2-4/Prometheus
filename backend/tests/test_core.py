@@ -180,7 +180,7 @@ def test_api_flow():
     out = c.post("/api/v1/assess", json=SUNITA).json()
     assert out["triage_level"] in ("routine", "urgent")
     assert {r["condition"] for r in out["results"]} == {"hypertension", "diabetes", "cvd"}
-    assert len(c.get("/api/v1/models").json()) == 4
+    assert len(c.get("/api/v1/models").json()) >= 4
     assert all(f["text"] for r in out["results"] for f in r["top_factors"])
 
     aid = out["assessment_id"]
