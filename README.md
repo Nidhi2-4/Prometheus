@@ -22,6 +22,7 @@
 For the complete technical specification, screen inventories, ML model specifications, emergency rules, and architecture blueprints, please refer to:
 
 - 📖 **[`PROJECT_SPEC.md`](file:///Users/nidhiii/Prometheus-Healthcare/PROJECT_SPEC.md)** — Comprehensive project specification and system architecture guide.
+- 🎨 **[`FRONTEND.md`](file:///Users/nidhiii/Prometheus-Healthcare/FRONTEND.md)** — Frontend guide: screens, APIs, camera rPPG, voice, sessions, and demo stories.
 
 ---
 
