@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CircleAlert, Cpu, FileText, MapPin, Mic, Phone, ShieldCheck, Siren, Stethoscope } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleAlert, Cpu, FileText, MapPin, Mic, Phone, ShieldCheck, Siren, Square, Stethoscope } from 'lucide-react';
 import {
   AssessmentResponse, Facility, HeartRateResult, Language, PatientFeatures, RedFlagRule, SymptomCode, TriageLevel,
 } from './types/health';
@@ -8,7 +8,7 @@ import { evaluateRedFlags } from './services/redFlagEngine';
 import { AssessPayload, fetchFacilities, initializeSession, parseVoiceSymptoms, postAssessment, submitAssessment } from './services/api';
 import { addCheck, CheckRecord, clearSaved, loadSaved, profileToFeatures, saveConsent, saveLang, saveProfile } from './services/profile';
 import { queueAssessmentOffline, setupAutoSyncListener } from './services/offlineQueue';
-import { startDeviceSpeechRecognition } from './device/speech';
+import { startDeviceSpeechRecognition, stopDeviceSpeechRecognition } from './device/speech';
 import { DISTRICT_FALLBACKS, GeoCoordinates, getDeviceLocation } from './device/geolocation';
 import { Choice, Title, YesNo } from './components/ui';
 import { EmergencyAlert } from './components/EmergencyAlert';
@@ -78,6 +78,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [voiceMsg, setVoiceMsg] = useState('');
+  const [micState, setMicState] = useState<'idle' | 'listening' | 'processing'>('idle');
   const [, setVoicesLoaded] = useState(0);
   const [showModels, setShowModels] = useState(false);
   const t = TRANSLATIONS[lang];
@@ -148,18 +149,41 @@ export default function App() {
   const toggleSymptom = (code: SymptomCode) =>
     setSymptoms(f.symptoms.includes(code) ? f.symptoms.filter((c) => c !== code) : [...f.symptoms, code]);
 
-  const listen = () => {
+  const listen = async () => {
+    if (micState === 'listening') {
+      stopDeviceSpeechRecognition();
+      setMicState('idle');
+      return;
+    }
     setVoiceMsg(t.voice_listening);
-    const rec = startDeviceSpeechRecognition(lang, async (text, keywordCodes) => {
-      // Gemini understands free speech ("2 din se chhati me dabav"); the keyword list is the offline fallback.
-      const ai = await parseVoiceSymptoms(text, lang);
-      const codes = ai?.symptoms ?? keywordCodes;
-      const found = codes.filter((c) => visibleSymptoms.some((s) => s.code === c) && !f.symptoms.includes(c));
-      setVoiceMsg(found.length || codes.length ? '' : t.voice_none);
-      const days = ai?.duration_days != null && f.symptom_duration_days == null ? { symptom_duration_days: ai.duration_days } : {};
-      if (found.length) setSymptoms([...f.symptoms, ...found], days);
-    }, () => setVoiceMsg(t.voice_none));
-    if (!rec) setVoiceMsg(t.voice_unsupported);
+    await startDeviceSpeechRecognition(lang, {
+      onResult: async (text, keywordCodes) => {
+        setVoiceMsg(`Recognized: "${text}"`);
+        // Gemini understands free speech ("2 din se chhati me dabav"); the keyword list is the offline fallback.
+        const ai = await parseVoiceSymptoms(text, lang);
+        const codes = ai?.symptoms?.length ? ai.symptoms : keywordCodes;
+        const found = codes.filter((c) => visibleSymptoms.some((s) => s.code === c) && !f.symptoms.includes(c));
+        const addedNames = found.map((c) => visibleSymptoms.find((s) => s.code === c)?.label[lang] || c);
+        setVoiceMsg(
+          found.length
+            ? `Added: ${addedNames.join(', ')}`
+            : codes.length
+            ? 'Symptoms already selected'
+            : t.voice_none || 'No symptoms identified from speech'
+        );
+        const days = ai?.duration_days != null && f.symptom_duration_days == null ? { symptom_duration_days: ai.duration_days } : {};
+        if (found.length) setSymptoms([...f.symptoms, ...found], days);
+      },
+      onInterim: (interim) => {
+        setVoiceMsg(`Hearing: "${interim}"...`);
+      },
+      onError: (msg) => {
+        setVoiceMsg(msg);
+      },
+      onStateChange: (state) => {
+        setMicState(state);
+      },
+    });
   };
 
   const pregnancyStep = f.is_pregnant ? ['pregnancy' as const] : [];
@@ -468,10 +492,51 @@ export default function App() {
 
               {step === 'symptoms' && (
                 <>
-                  <Title lang={lang} title={t.symptoms_title} sub={t.symptoms_sub}>
-                    <button className="icon-btn" aria-label={t.voice_btn} onClick={listen}><Mic size={22} /></button>
-                  </Title>
-                  {voiceMsg && <p className="muted" role="status">{voiceMsg}</p>}
+                  <Title lang={lang} title={t.symptoms_title} sub={t.symptoms_sub} />
+
+                  <div className={`voice-assistant-card ${micState === 'listening' ? 'listening' : ''}`}>
+                    <div className="voice-main-row">
+                      <button
+                        type="button"
+                        className={`voice-mic-btn ${micState === 'listening' ? 'active-listening' : ''}`}
+                        onClick={listen}
+                        aria-label={micState === 'listening' ? 'Stop listening' : t.voice_btn}
+                        title={micState === 'listening' ? 'Stop listening' : 'Tap to speak symptoms'}
+                      >
+                        {micState === 'listening' ? <Square size={22} fill="#fff" /> : <Mic size={24} />}
+                      </button>
+                      <div className="voice-text-col">
+                        <div className="voice-title-text">
+                          {micState === 'listening'
+                            ? '🔴 Listening... Speak now'
+                            : micState === 'processing'
+                            ? '⏳ Understanding symptoms with Clinical AI...'
+                            : 'AI Voice Assistant (Hindi / English / Marathi)'}
+                        </div>
+                        <div className="voice-sub-text">
+                          {micState === 'listening'
+                            ? 'Speak naturally: e.g. "छाती में दर्द और पसीना आ रहा है" or "Headache and fever"'
+                            : 'Tap the mic to speak symptoms, or choose from the cards below.'}
+                        </div>
+                      </div>
+                      {micState === 'listening' && (
+                        <button
+                          type="button"
+                          className="btn btn-small btn-danger"
+                          onClick={() => { stopDeviceSpeechRecognition(); setMicState('idle'); }}
+                          style={{ minHeight: '38px', padding: '4px 12px', fontSize: '13px' }}
+                        >
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                    {voiceMsg && (
+                      <div className="voice-transcript-badge" role="status">
+                        <span>{voiceMsg}</span>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="symptoms">
                     {visibleSymptoms.map((s) => (
                       <Choice key={s.code} selected={f.symptoms.includes(s.code)} onClick={() => toggleSymptom(s.code)}>
