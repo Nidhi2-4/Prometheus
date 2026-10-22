@@ -4,12 +4,23 @@ services:
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # Values for every key: env.render (local file, not committed). Secrets are never written here.
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: CORS_ORIGINS
         value: https://swasthikk.vercel.app,http://localhost:5173
       - key: COOKIE_SAMESITE
         value: none
       - key: COOKIE_SECURE
         value: "1"
+      - key: SIMULATE_AVAILABILITY
+        value: "1"
+      - key: GEMINI_MODEL
+        value: gemini-flash-lite-latest
       - key: SESSION_SECRET
-        value: swasthik-secret-key-2026
+        generateValue: true
+      - key: PARTNER_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false  # set in the Render dashboard

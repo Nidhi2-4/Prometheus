@@ -51,7 +51,7 @@ def triage(flags: list[RuleHit], results: list[RiskResult], f: Features) -> str:
         return "urgent"
     if any(r.level in ("medium", "high") for r in results):
         return "routine"
-    if "cough" in s and s & {"fever", "breathlessness"}:
+    if "cough" in s and (s & {"fever", "breathlessness"} or (f.symptom_duration_days or 0) >= 14):
         return "routine"
     return "self_care"
 

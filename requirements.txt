@@ -1,11 +1,1 @@
-fastapi
-uvicorn
-itsdangerous
-numpy
-scipy
-scikit-learn==1.9.1
-lightgbm
-joblib
-shap
-httpx
-pytest
+-r backend/requirements.txt  # one list for local and Render

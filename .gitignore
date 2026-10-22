@@ -83,3 +83,8 @@ ml/data/processed/
 *.sublime-workspace
 *.swp
 *.swo
+
+# Real env values per target (secrets): never commit
+env.local
+env.render
+env.vercel

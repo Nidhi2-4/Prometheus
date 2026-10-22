@@ -9,6 +9,7 @@ export async function getCameraStream(facingMode: 'user' | 'environment' = 'user
       facingMode,
       width: { ideal: 640 },
       height: { ideal: 480 },
+      frameRate: { ideal: 30 },
     },
     audio: false,
   });

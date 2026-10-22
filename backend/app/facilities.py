@@ -1,6 +1,7 @@
 """Facility recommender: ranks by time to see a doctor (info.md section 8)."""
 import json
 import math
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,6 +11,7 @@ FACILITIES = json.loads((Path(__file__).parent / "data" / "facilities.json").rea
 _now = datetime.now(timezone.utc)
 # ponytail: in-memory, reset on restart; the mock hospital pusher refills it every minute.
 AVAILABILITY = {f["id"]: {**f.pop("availability"), "updated_at": _now} for f in FACILITIES if "availability" in f}
+SPECIALTIES = {fid: [d["specialty"] for d in a["doctors"]] for fid, a in AVAILABILITY.items()}  # real mix per facility
 
 SPEED_KMH = 25  # ponytail: flat town speed; switch to road routing (OSRM) if travel times look wrong
 STALE_MIN = 30
@@ -23,6 +25,23 @@ def haversine_km(lat1, lng1, lat2, lng2) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
     return 6371 * 2 * math.asin(math.sqrt(a))
+
+
+def random_roster(facility: dict, rng=random) -> dict:
+    """Simulated hospital software (demo only): plausible doctors on duty and queue for one facility."""
+    specialties = SPECIALTIES.get(facility["id"]) or ["general"] + (["gynaecology"] if "maternity" in facility["services"] else [])
+    doctors = []
+    for s in specialties:
+        on_duty = rng.random() < 0.7
+        doctors.append({"specialty": s, "on_duty": on_duty, "arrives_in_min": 0 if on_duty else rng.choice([15, 30, 45, 60, 120])})
+    return {"facility_id": facility["id"], "doctors": doctors, "queue_wait_min": rng.choice([5, 10, 20, 30, 60]),
+            "updated_at": datetime.now(timezone.utc)}
+
+
+def simulate_once():
+    """Refresh every facility with a random roster (SIMULATE_AVAILABILITY=1, e.g. on Render without the pusher)."""
+    for f in FACILITIES:
+        update_availability(AvailabilityIn(**random_roster(f)))
 
 
 def update_availability(a: AvailabilityIn) -> bool:

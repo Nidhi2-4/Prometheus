@@ -130,6 +130,7 @@ ul.reasons { padding-left: 20px; color: var(--muted); font-size: 15px; }
 .camera { position: relative; background: var(--ink); border-radius: 12px; overflow: hidden; aspect-ratio: 4 / 3; }
 .camera video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 .oval { position: absolute; left: 50%; top: 50%; width: 45%; height: 75%; transform: translate(-50%, -50%); border: 3px solid var(--paper); border-radius: 50%; pointer-events: none; }
+.camera .live { position: absolute; top: 10px; left: 10px; }
 .camera .count { position: absolute; top: 10px; right: 10px; background: var(--teal); color: var(--paper); padding: 4px 12px; border-radius: 16px; font-weight: 700; }
 .camera .tip { position: absolute; left: 10px; right: 10px; bottom: 10px; background: var(--ink); color: var(--paper); padding: 6px 10px; border-radius: 8px; font-size: 15px; text-align: center; }
 

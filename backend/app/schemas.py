@@ -62,6 +62,7 @@ class Features(BaseModel):
     blood_sugar_mgdl: float | None = Field(None, ge=20, le=600)  # optional, used by the maternal model
     body_temp_c: float | None = Field(None, ge=30, le=45)        # optional, used by the maternal model
     symptoms: list[Symptom] = []
+    symptom_duration_days: int | None = Field(None, ge=0, le=3650)
 
 
 class HeartRate(BaseModel):
@@ -161,6 +162,16 @@ class EligibilityOut(BaseModel):
     reasons: list[str]
     documents: list[str]
     note: str
+
+
+class VoiceIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)  # transcribed speech only, never audio
+    language: Language = "en"
+
+
+class VoiceOut(BaseModel):
+    symptoms: list[Symptom]
+    duration_days: int | None
 
 
 class SoapOut(BaseModel):

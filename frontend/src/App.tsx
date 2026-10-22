@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, CircleAlert, FileText, MapPin, Mic, Phone, ShieldCheck, Siren, Stethoscope } from 'lucide-react';
 import {
   AssessmentResponse, Facility, HeartRateResult, Language, PatientFeatures, RedFlagRule, SymptomCode, TriageLevel,
 } from './types/health';
 import { SYMPTOM_CATALOG, TRANSLATIONS } from './i18n/translations';
 import { evaluateRedFlags } from './services/redFlagEngine';
-import { fetchFacilities, initializeSession, postAssessment, submitAssessment } from './services/api';
+import { AssessPayload, fetchFacilities, initializeSession, parseVoiceSymptoms, postAssessment, submitAssessment } from './services/api';
+import { addCheck, CheckRecord, clearSaved, loadSaved, profileToFeatures, saveConsent, saveLang, saveProfile } from './services/profile';
 import { queueAssessmentOffline, setupAutoSyncListener } from './services/offlineQueue';
 import { startDeviceSpeechRecognition } from './device/speech';
 import { DISTRICT_FALLBACKS, GeoCoordinates, getDeviceLocation } from './device/geolocation';
@@ -19,7 +20,7 @@ import { DoctorScreen } from './components/DoctorScreen';
 
 type Step =
   | 'lang' | 'consent' | 'home'
-  | 'basic' | 'lifestyle' | 'history' | 'pregnancy' | 'symptoms' | 'vitals'
+  | 'review' | 'basic' | 'lifestyle' | 'history' | 'pregnancy' | 'symptoms' | 'vitals'
   | 'result' | 'care' | 'scheme' | 'summary' | 'doctor';
 
 const EMPTY: PatientFeatures = {
@@ -46,10 +47,22 @@ const TRIAGE_ICON = { emergency: Siren, urgent: CircleAlert, routine: Stethoscop
 
 const inRange = (v: number | null | undefined, lo: number, hi: number) => v != null && v >= lo && v <= hi;
 const numOrNull = (v: string) => (v === '' ? null : Number(v));
+const PREGNANCY_ONLY = SYMPTOM_CATALOG.filter((s) => s.pregnancyOnly).map((s) => s.code);
+const browserLang = (): Language => {
+  const code = navigator.language.slice(0, 2);
+  return LANGS.find((l) => l.code === code)?.code ?? 'en';
+};
 
 export default function App() {
-  const [lang, setLang] = useState<Language>('en');
-  const [step, setStep] = useState<Step>('lang');
+  // One-time setup: language and consent are asked once, then the app opens on Home.
+  const [lang, setLangState] = useState<Language>(() => loadSaved().lang ?? browserLang());
+  const [step, setStep] = useState<Step>(() => (loadSaved().consentAt ? 'home' : 'lang'));
+  const [quick, setQuick] = useState(false); // saved profile: short intake (review → symptoms → vitals)
+  const [history, setHistory] = useState<CheckRecord[]>(() => loadSaved().history ?? []);
+  const [prevBp, setPrevBp] = useState<CheckRecord | null>(null);
+  const [proceedAfterAlert, setProceedAfterAlert] = useState(false);
+  const lastPayload = useRef<AssessPayload | null>(null);
+  const shownId = useRef<string | null>(null);
   const [f, setF] = useState<PatientFeatures>(EMPTY);
   const [hr, setHr] = useState<HeartRateResult | null>(null);
   const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
@@ -66,15 +79,36 @@ export default function App() {
   const [voiceMsg, setVoiceMsg] = useState('');
   const [, setVoicesLoaded] = useState(0);
   const t = TRANSLATIONS[lang];
+  const setLang = (l: Language) => { setLangState(l); saveLang(l); };
+  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(`${lang}-IN`);
 
   useEffect(() => {
     initializeSession();
-    setupAutoSyncListener((item) => postAssessment(item.payload));
+    // When a queued offline check syncs and it is the one on screen, swap in the real result.
+    setupAutoSyncListener((item) => postAssessment(item.payload).then((res) => {
+      if (shownId.current !== item.id) return;
+      shownId.current = res.assessment_id;
+      setAssessment(res);
+      setOfflineResult(false);
+      setSavedOffline(false);
+    }));
     // Voices load async; re-render so speaker buttons appear once they do.
     if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => setVoicesLoaded((n) => n + 1);
   }, []);
 
   useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+
+  // Reasons on the result come from the backend in the language used at submit; re-ask when it changes.
+  useEffect(() => {
+    const p = lastPayload.current;
+    if (!p || p.language === lang) return;
+    submitAssessment({ ...p, language: lang }).then(({ result, offline }) => {
+      if (offline) return;
+      lastPayload.current = { ...p, language: lang };
+      shownId.current = result.assessment_id;
+      setAssessment(result);
+    });
+  }, [lang]);
 
   const triage: TriageLevel | undefined = emergencyFrom ? 'emergency' : assessment?.triage_level;
   useEffect(() => {
@@ -91,25 +125,45 @@ export default function App() {
   };
 
   const update = (patch: Partial<PatientFeatures>) => {
-    setF({ ...f, ...patch });
+    const next = { ...f, ...patch };
+    // Pregnancy-only symptoms are hidden when not pregnant, so they must not stay selected either.
+    if (!next.is_pregnant) next.symptoms = next.symptoms.filter((c) => !PREGNANCY_ONLY.includes(c));
+    setF(next);
     setError('');
+  };
+
+  // Show the emergency alert the moment a red-flag symptom is picked, not only on Next.
+  const setSymptoms = (symptoms: SymptomCode[], extra: Partial<PatientFeatures> = {}) => {
+    update({ symptoms, ...extra });
+    const rules = evaluateRedFlags({ ...f, symptoms }, hr).rules;
+    if (rules.some((r) => !dismissed.includes(r.id))) {
+      setProceedAfterAlert(false);
+      setAlertRules(rules);
+    }
   };
 
   const visibleSymptoms = SYMPTOM_CATALOG.filter((s) => !s.pregnancyOnly || f.is_pregnant);
   const toggleSymptom = (code: SymptomCode) =>
-    update({ symptoms: f.symptoms.includes(code) ? f.symptoms.filter((c) => c !== code) : [...f.symptoms, code] });
+    setSymptoms(f.symptoms.includes(code) ? f.symptoms.filter((c) => c !== code) : [...f.symptoms, code]);
 
   const listen = () => {
     setVoiceMsg(t.voice_listening);
-    const rec = startDeviceSpeechRecognition(lang, (_text, codes) => {
+    const rec = startDeviceSpeechRecognition(lang, async (text, keywordCodes) => {
+      // Gemini understands free speech ("2 din se chhati me dabav"); the keyword list is the offline fallback.
+      const ai = await parseVoiceSymptoms(text, lang);
+      const codes = ai?.symptoms ?? keywordCodes;
       const found = codes.filter((c) => visibleSymptoms.some((s) => s.code === c) && !f.symptoms.includes(c));
       setVoiceMsg(found.length || codes.length ? '' : t.voice_none);
-      if (found.length) update({ symptoms: [...f.symptoms, ...found] });
+      const days = ai?.duration_days != null && f.symptom_duration_days == null ? { symptom_duration_days: ai.duration_days } : {};
+      if (found.length) setSymptoms([...f.symptoms, ...found], days);
     }, () => setVoiceMsg(t.voice_none));
     if (!rec) setVoiceMsg(t.voice_unsupported);
   };
 
-  const intake: Step[] = ['basic', 'lifestyle', 'history', ...(f.is_pregnant ? ['pregnancy' as const] : []), 'symptoms', 'vitals'];
+  const pregnancyStep = f.is_pregnant ? ['pregnancy' as const] : [];
+  const intake: Step[] = quick
+    ? ['review', ...pregnancyStep, 'symptoms', 'vitals']
+    : ['basic', 'lifestyle', 'history', ...pregnancyStep, 'symptoms', 'vitals'];
   const idx = intake.indexOf(step);
 
   const validate = () => {
@@ -119,8 +173,13 @@ export default function App() {
       if (!inRange(f.height_cm, 50, 250)) return t.err_height;
       if (!inRange(f.weight_kg, 2, 300)) return t.err_weight;
     }
+    if (step === 'review' && !inRange(f.weight_kg, 2, 300)) return t.err_weight;
     if (step === 'pregnancy' && !inRange(f.pregnancy_weeks, 1, 42)) return t.err_weeks;
-    if (step === 'vitals' && (f.systolic != null || f.diastolic != null) && !(inRange(f.systolic, 60, 260) && inRange(f.diastolic, 30, 160))) return t.err_bp;
+    if (step === 'symptoms' && f.symptom_duration_days != null && !inRange(f.symptom_duration_days, 0, 3650)) return t.duration_q;
+    if (step === 'vitals' && (f.systolic != null || f.diastolic != null)) {
+      if (!(inRange(f.systolic, 60, 260) && inRange(f.diastolic, 30, 160))) return t.err_bp;
+      if (f.systolic! <= f.diastolic!) return t.err_bp_order;
+    }
     return '';
   };
 
@@ -130,10 +189,23 @@ export default function App() {
     const { result, offline } = await submitAssessment(payload);
     const queued = offline && !navigator.onLine;
     if (queued) await queueAssessmentOffline({ id: result.assessment_id, timestamp: new Date().toISOString(), payload, localAssessment: result });
+    lastPayload.current = payload;
+    shownId.current = result.assessment_id;
     setSavedOffline(queued);
     setOfflineResult(offline);
     setAssessment(result);
     setEmergencyFrom(null);
+
+    // Remember the profile and this reading on the phone for next time.
+    const record: CheckRecord = {
+      date: new Date().toISOString(), systolic: f.systolic, diastolic: f.diastolic,
+      bpm: hr?.bpm ?? null, triage: result.triage_level,
+    };
+    setPrevBp(history.find((h) => h.systolic != null) ?? null);
+    setHistory([record, ...history].slice(0, 50));
+    saveProfile(f);
+    addCheck(record);
+
     setBusy(false);
     go('result');
   };
@@ -146,20 +218,34 @@ export default function App() {
     const err = validate();
     if (err) return setError(err);
     const rules = evaluateRedFlags(f, hr).rules;
-    if (rules.some((r) => !dismissed.includes(r.id))) return setAlertRules(rules);
+    if (rules.some((r) => !dismissed.includes(r.id))) {
+      setProceedAfterAlert(true);
+      return setAlertRules(rules);
+    }
     proceed();
   };
 
-  // Every check starts from a blank form, however the user got back to home.
+  // Every check starts fresh (no symptoms, no BP); a saved profile pre-fills the rest and shortens the intake.
   const startCheck = () => {
-    setF(EMPTY);
+    const profile = loadSaved().profile;
+    setQuick(!!profile);
+    setF(profile ? profileToFeatures(profile, EMPTY) : EMPTY);
+    lastPayload.current = null;
     setHr(null);
     setAssessment(null);
     setDismissed([]);
     setFacilities([]);
     setEmergencyFrom(null);
     getDeviceLocation(setCoords, (fallback) => { setCoords(fallback); setGpsFailed(true); });
-    go('basic');
+    go(profile ? 'review' : 'basic');
+  };
+
+  const deleteData = () => {
+    if (!window.confirm(`${t.delete_data}?`)) return;
+    clearSaved();
+    setHistory([]);
+    setQuick(false);
+    go('lang');
   };
 
   const bmi = f.height_cm && f.weight_kg ? (f.weight_kg / (f.height_cm / 100) ** 2).toFixed(1) : null;
@@ -205,18 +291,33 @@ export default function App() {
           <section className="card">
             <Title lang={lang} title={t.consent_title} sub={t.consent_body} />
             <p><strong>{t.disclaimer}</strong></p>
-            <button className="btn btn-primary" onClick={() => go('home')}>{t.consent_agree}</button>
+            <button className="btn btn-primary" onClick={() => { saveConsent(); go('home'); }}>{t.consent_agree}</button>
           </section>
         )}
 
-        {step === 'home' && (
-          <section className="card">
-            <h1>{t.home_title}</h1>
-            <p className="muted">{t.home_sub}</p>
-            <button className="btn btn-primary" onClick={startCheck}>{t.home_start} <ArrowRight size={20} /></button>
-            <p className="small muted">{t.tagline}</p>
-          </section>
-        )}
+        {step === 'home' && (() => {
+          const hasProfile = !!loadSaved().profile;
+          const readings = history.filter((h) => h.systolic != null).slice(0, 5);
+          return (
+            <section className="card">
+              <h1>{hasProfile ? t.welcome_back : t.home_title}</h1>
+              <p className="muted">{t.home_sub}</p>
+              <button className="btn btn-primary" onClick={startCheck}>{t.home_start} <ArrowRight size={20} /></button>
+              {readings.length > 0 && (
+                <>
+                  <h2>{t.bp_history_title}</h2>
+                  <ul className="reasons">
+                    {readings.map((h) => (
+                      <li key={h.date}>{fmtDate(h.date)}: {h.systolic}/{h.diastolic} mmHg{h.bpm ? ` · ${h.bpm} /min` : ''}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              <p className="small muted">{t.tagline}</p>
+              {(hasProfile || history.length > 0) && <button className="link" onClick={deleteData}>{t.delete_data}</button>}
+            </section>
+          );
+        })()}
 
         {idx >= 0 && (
           <>
@@ -226,6 +327,27 @@ export default function App() {
             </div>
 
             <section className="card">
+              {step === 'review' && (
+                <>
+                  <Title lang={lang} title={t.review_title} sub={t.review_sub} />
+                  <p>
+                    <strong>{f.age}</strong> {t.age} · {f.sex === 'M' ? t.male : f.sex === 'F' ? t.female : t.other} · {f.height_cm} cm
+                    {bmi && ` · ${t.bmi} ${bmi}`}
+                  </p>
+                  <label className="field">
+                    {t.weight}
+                    <input type="number" inputMode="decimal" value={f.weight_kg || ''} onChange={(e) => update({ weight_kg: Number(e.target.value) })} />
+                  </label>
+                  {f.sex === 'F' && (
+                    <YesNo lang={lang} question={t.pregnant_q} value={f.is_pregnant} onChange={(v) => update({ is_pregnant: v })} />
+                  )}
+                  <YesNo lang={lang} question={t.known_bp_q} value={f.known_hypertension} onChange={(v) => update({ known_hypertension: v })} />
+                  <YesNo lang={lang} question={t.known_diabetes_q} value={f.known_diabetes} onChange={(v) => update({ known_diabetes: v })} />
+                  <YesNo lang={lang} question={t.known_heart_q} value={f.known_heart_disease} onChange={(v) => update({ known_heart_disease: v })} />
+                  <button className="link" onClick={() => { setQuick(false); go('basic'); }}>{t.edit_profile}</button>
+                </>
+              )}
+
               {step === 'basic' && (
                 <>
                   <Title lang={lang} title={t.basic_title} />
@@ -326,6 +448,12 @@ export default function App() {
                       </Choice>
                     ))}
                   </div>
+                  {f.symptoms.length > 0 && (
+                    <label className="field">
+                      {t.duration_q}
+                      <input type="number" inputMode="numeric" value={f.symptom_duration_days ?? ''} onChange={(e) => update({ symptom_duration_days: numOrNull(e.target.value) })} />
+                    </label>
+                  )}
                 </>
               )}
 
@@ -374,6 +502,12 @@ export default function App() {
                 </div>
               </div>
               {level === 'emergency' && <a className="btn btn-danger" href="tel:108"><Phone size={20} /> {t.call_108}</a>}
+              {prevBp && f.systolic != null && f.diastolic != null && (
+                <p className="card">
+                  {t.bp_prev(`${prevBp.systolic}/${prevBp.diastolic}`, fmtDate(prevBp.date))} → <strong>{f.systolic}/{f.diastolic}</strong>{' '}
+                  {f.systolic > prevBp.systolic! ? '↑' : f.systolic < prevBp.systolic! ? '↓' : '='}
+                </p>
+              )}
 
               <h2>{t.risk_title}</h2>
               <div className="grid">
@@ -439,7 +573,7 @@ export default function App() {
           onContinue={() => {
             setDismissed(alertRules.map((r) => r.id));
             setAlertRules([]);
-            proceed();
+            if (proceedAfterAlert) proceed(); // opened by Next; an alert from tapping a symptom just closes
           }}
         />
       )}

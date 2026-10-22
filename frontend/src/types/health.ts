@@ -56,7 +56,7 @@ export interface PatientFeatures {
   gravida?: number | null;
   previous_complications?: boolean;
   symptoms: SymptomCode[];
-  symptom_duration_days?: number;
+  symptom_duration_days?: number | null;
 }
 
 export interface HeartRateResult {

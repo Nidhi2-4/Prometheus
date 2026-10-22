@@ -1,20 +1,49 @@
-"""SwasthSetu API. Run: uvicorn app.main:app --reload  (docs at /docs)."""
+"""Swasthik API. Run: uvicorn app.main:app --port 8001  (docs at /docs)."""
+import asyncio
 import hmac
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
+from dotenv import load_dotenv
 
-from . import facilities, reports, risk, rppg, rules
-from .schemas import (AssessIn, AssessOut, AvailabilityIn, EligibilityIn, EligibilityOut, FacilityOut,
-                      RedFlagIn, RedFlagOut, RppgIn, RppgOut, SoapOut, Triage)
+# Local runs read <repo>/env.local; on Render the file doesn't exist and the dashboard env is used.
+load_dotenv(Path(__file__).resolve().parents[2] / "env.local")
+
+try:  # use the OS certificate store (antivirus/proxy roots on Windows broke Python's own bundle)
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
+
+from . import facilities, reports, risk, rppg, rules, voice  # noqa: E402
+from .schemas import (AssessIn, AssessOut, AvailabilityIn, EligibilityIn, EligibilityOut, FacilityOut,  # noqa: E402
+                      RedFlagIn, RedFlagOut, RppgIn, RppgOut, SoapOut, Triage, VoiceIn, VoiceOut)
 
 PARTNER_KEY = os.environ.get("PARTNER_KEY", "dev-partner-key")
 
-app = FastAPI(title="SwasthSetu API", version="0.1.0", description="Triage support, not diagnosis.")
+async def _simulate_availability():
+    while True:
+        facilities.simulate_once()
+        await asyncio.sleep(60)
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    # Demo deploys have no hospital pusher; without this, availability goes stale after 30 min.
+    task = asyncio.create_task(_simulate_availability()) if os.environ.get("SIMULATE_AVAILABILITY") == "1" else None
+    yield
+    if task:
+        task.cancel()
+
+
+app = FastAPI(title="Swasthik API", version="0.1.0", description="Triage support, not diagnosis.", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET", "dev-only-change-me"),
@@ -23,16 +52,22 @@ app.add_middleware(
 )
 app.add_middleware(  # added last = outermost, so CORS headers are on every response
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","),
+    # Browsers send the origin without a trailing slash; tolerate "https://x.app/" in the env value.
+    allow_origins=[o.strip().rstrip("/") for o in
+                   os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()],
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 api = APIRouter(prefix="/api/v1")
 
 # ponytail: in-memory store, lost on restart; move to SQLite when history (F16) is needed.
 ASSESSMENTS: dict[str, dict] = {}
+SESSIONS: set[str] = set()  # issued session ids; a restart forces clients to start a new session
 
 
-def session_id(request: Request) -> str:
+def session_id(request: Request, x_session_id: str | None = Header(None)) -> str:
+    # Header first: browsers often block the cookie when frontend and backend are on different domains.
+    if x_session_id in SESSIONS:
+        return x_session_id
     sid = request.session.get("sid")
     if not sid:
         raise HTTPException(401, "No session. Call POST /api/v1/session first.")
@@ -53,8 +88,9 @@ def health():
 
 @api.post("/session")
 def start_session(request: Request):
-    request.session.setdefault("sid", uuid.uuid4().hex)
-    return {"ok": True}
+    sid = request.session.setdefault("sid", uuid.uuid4().hex)
+    SESSIONS.add(sid)
+    return {"ok": True, "session_id": sid}  # send back as X-Session-Id when cookies are blocked
 
 
 # No session needed: the emergency path must never fail on a cookie problem.
@@ -94,6 +130,18 @@ def get_fhir(assessment_id: str, a: dict = Depends(own_assessment)):
 @api.post("/vitals/rppg", response_model=RppgOut)
 def vitals_rppg(body: RppgIn):
     return rppg.estimate(body.green, body.fps)
+
+
+# ponytail: session-gated but no rate limit; add one if the Gemini quota is ever abused.
+@api.post("/voice/symptoms", response_model=VoiceOut)
+def voice_symptoms(body: VoiceIn, _sid: str = Depends(session_id)):
+    try:
+        out = voice.parse(body.text, body.language)
+    except (OSError, KeyError, IndexError, ValueError):
+        raise HTTPException(502, "Voice service unavailable")
+    if out is None:
+        raise HTTPException(503, "Voice AI not configured")
+    return out
 
 
 @api.get("/facilities/nearby", response_model=list[FacilityOut])

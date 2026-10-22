@@ -7,26 +7,43 @@ import {
   TriageLevel,
   Facility,
   Language,
+  SymptomCode,
 } from '../types/health';
 import { evaluateRedFlags } from './redFlagEngine';
 import { TRANSLATIONS } from '../i18n/translations';
 import { getRankedFacilities } from './facilitiesData';
 import { estimateBpm } from './rppg';
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api/v1';
+// Accepts "https://host", "https://host/" or "https://host/api/v1" (and the older VITE_BACKEND name).
+const API_BASE_URL = String(import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_BACKEND || 'http://localhost:8000')
+  .replace(/\/+$/, '')
+  .replace(/(\/api\/v1)?$/, '/api/v1');
 
 // Every call sends the session cookie. Throws when the backend is down so callers can fall back locally.
+// Sent as a header too: browsers often block the session cookie when frontend and backend are on different domains.
+let sessionId: string | null = null;
+
+async function startSession(): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/session`, { method: 'POST', credentials: 'include' });
+  if (res.ok) sessionId = (await res.json()).session_id ?? null;
+}
+
 // A 401 means the session is missing (backend was down at app start, or restarted): start one and retry once.
 async function request<T>(path: string, body?: unknown): Promise<T> {
-  const send = () => fetch(`${API_BASE_URL}${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    credentials: 'include',
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const send = () => {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (sessionId) headers['X-Session-Id'] = sessionId;
+    return fetch(`${API_BASE_URL}${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      credentials: 'include',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  };
   let res = await send();
-  if (res.status === 401 && path !== '/session') {
-    await fetch(`${API_BASE_URL}/session`, { method: 'POST', credentials: 'include' });
+  if (res.status === 401) {
+    await startSession();
     res = await send();
   }
   if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
@@ -34,7 +51,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export async function initializeSession(): Promise<void> {
-  await request('/session', {}).catch(() => console.info('Backend unreachable, running locally'));
+  await startSession().catch(() => console.info('Backend unreachable, running locally'));
 }
 
 export async function checkHeartRate(green: number[], fps: number, brightness: number): Promise<HeartRateResult> {
@@ -43,6 +60,15 @@ export async function checkHeartRate(green: number[], fps: number, brightness: n
     return await request<HeartRateResult>('/vitals/rppg', { fps, green });
   } catch {
     return { ...estimateBpm(green, fps, brightness), note };
+  }
+}
+
+// Free speech in any UI language -> symptom codes (Gemini on the backend). null = unavailable, use the keyword matcher.
+export async function parseVoiceSymptoms(text: string, language: Language): Promise<{ symptoms: SymptomCode[]; duration_days: number | null } | null> {
+  try {
+    return await request('/voice/symptoms', { text, language });
+  } catch {
+    return null;
   }
 }
 

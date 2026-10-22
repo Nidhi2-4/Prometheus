@@ -70,6 +70,8 @@ def test_triage_demo_stories():
     assert rules.triage([], [rr("cvd", "high")], feat(symptoms=["chest_pain"])) == "urgent"
     assert rules.triage([], [rr("cvd", "low")], feat(systolic=160)) == "urgent"
     assert rules.triage([], [rr("cvd", "low")], feat()) == "self_care"
+    assert rules.triage([], [], feat(symptoms=["cough"], symptom_duration_days=3)) == "self_care"
+    assert rules.triage([], [], feat(symptoms=["cough"], symptom_duration_days=15)) == "routine"
 
 
 def test_models_loaded_and_explained():
@@ -154,6 +156,14 @@ def test_ranking_prefers_doctor_on_duty(monkeypatch):
     assert out[0].time_to_doctor_min is None and out[0].availability_updated_min_ago == 45
 
 
+def test_simulated_availability():
+    facilities.simulate_once()
+    rows = facilities.nearby(21.1458, 79.0882, "routine", limit=50)
+    assert all(r.availability_updated_min_ago == 0 for r in rows)
+    daga = facilities.AVAILABILITY["fac_daga"]["doctors"]
+    assert {d["specialty"] for d in daga} == {"gynaecology"}  # keeps each facility's real specialties
+
+
 SUNITA = {"language": "mr", "lat": 21.1458, "lng": 79.0882,
           "features": {"age": 45, "sex": "F", "height_cm": 155, "weight_kg": 72, "activity_level": "low",
                        "family_history_diabetes": True, "systolic": 142, "diastolic": 92,
@@ -182,6 +192,12 @@ def test_api_flow():
     other = TestClient(app)
     other.post("/api/v1/session")
     assert other.get(f"/api/v1/assessments/{aid}/soap").status_code == 404  # other session cannot read it
+
+    # header session works without any cookie (cross-site deploy); unknown ids are rejected
+    sid = TestClient(app).post("/api/v1/session").json()["session_id"]
+    bare = TestClient(app)
+    assert bare.post("/api/v1/assess", json=SUNITA, headers={"X-Session-Id": sid}).status_code == 200
+    assert bare.post("/api/v1/assess", json=SUNITA, headers={"X-Session-Id": "made-up"}).status_code == 401
 
     assert c.get("/api/v1/facilities/nearby", params={"lat": 21.1458, "lng": 79.0882, "triage_level": "emergency"}).json()
     avail = {"facility_id": "fac_gmch", "doctors": [], "queue_wait_min": 5, "updated_at": "2026-10-22T13:00:00+05:30"}
