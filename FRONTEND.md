@@ -1,4 +1,4 @@
-# Swasthik — Frontend Guide
+# Swastik — Frontend Guide
 
 Everything the frontend needs: what we are building, the screens, the API, and the tricky parts (camera heart rate, voice, GPS, sessions).  
 Backend owner: Anish. ML: Pravesh. Overall project info: [info.md](info.md). Full original spec: `docs/Documentation - Health Risk Detection.pdf`.
@@ -9,7 +9,7 @@ Backend owner: Anish. ML: Pravesh. Overall project info: [info.md](info.md). Ful
 
 ## 1. What we are building
 
-A mobile-first app. A patient (often low-literacy, rural, speaks Marathi or Hindi) goes through a guided health check and ends with:
+A mobile-first **web app** (runs in the phone browser). A patient (often low-literacy, rural, speaks Marathi or Hindi) goes through a guided health check and ends with:
 
 1. An instant **emergency alert** if anything dangerous is reported.
 2. **Risk cards** for hypertension, diabetes and heart disease, each with 3 reasons in plain language.
@@ -31,13 +31,24 @@ The whole demo must run in under 3 minutes.
 
 ## 2. Platform and stack
 
-**Open decision:** the problem statement says *mobile-first web app*, the PDF says *React Native Expo*. This guide assumes **web app** (no APK build, judges open a link on their phone). Tell Anish if we switch.
+**Decided:**
+- **Phase 1 (now): web app**, built mobile-first and installable as a PWA ("Add to Home Screen" on Android). Judges just open a link or scan a QR.
+- **Phase 2 (after web is complete): native mobile app.** Capacitor wrapper (reuses this code) or Expo, decided later. The backend and API stay the same.
 
-Suggested (your call):
+Why web first: the camera heart rate needs per-frame pixel access (easy with canvas in the browser, a native module + dev build in React Native), and the browser gives speech recognition and text-to-speech for free.
+
+Stack:
 - React + Vite + TypeScript
+- `vite-plugin-pwa` (installable app + service worker for offline)
 - `react-i18next` for English / Hindi / Marathi
 - `leaflet` + `react-leaflet` with OpenStreetMap tiles (no API key)
+- IndexedDB (`idb-keyval`) for the offline queue
+- Tailwind (optional)
 - Deploy on Vercel (HTTPS, see section 9)
+
+To make phase 2 easy:
+- Keep **all API calls in one module** (e.g. `src/api.ts`). No `fetch` scattered in components.
+- Keep browser-only code (camera, speech, geolocation, print) behind small helpers (`src/device/*.ts`), so the mobile version can swap them.
 
 ---
 
@@ -346,6 +357,7 @@ navigator.geolocation.getCurrentPosition(
 - **Validate inputs** before sending: age 1–120, height 50–250 cm, weight 2–300 kg, systolic 60–260, diastolic 30–160.
 - **Loading / error states** on every API call. Backend down → "Could not connect, retry". The Emergency Alert **Call 108** button must never depend on the network.
 - Never show a BPM when quality is `poor`.
+- **Offline:** the service worker caches the app, translations and the facility list. If there is no network on "See my result", save the assessment in IndexedDB, show "Will complete when online", and send the queue on the browser `online` event.
 
 ---
 
@@ -382,6 +394,5 @@ Backend endpoints return mock data from day one in the final shape. Start agains
 
 ## 12. Questions to answer early (ping Anish)
 
-- Web app or Expo? (affects camera, voice, print, cookies)
 - Frontend URL for CORS (Anish needs the exact origin).
 - Should red flags also work offline? If yes, we need a JS copy of the rules.

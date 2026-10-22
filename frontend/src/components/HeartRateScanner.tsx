@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { HeartRateResult, Language } from '../types/health';
 import { Camera, AlertTriangle, RefreshCw, CheckCircle2, X } from 'lucide-react';
+import { getCameraStream, stopCameraStream } from '../device/camera';
 
 interface HeartRateScannerProps {
   language: Language;
@@ -30,10 +31,7 @@ export const HeartRateScanner: React.FC<HeartRateScannerProps> = ({
   const startCamera = async () => {
     try {
       setErrorMsg(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
+      const stream = await getCameraStream('user');
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -62,9 +60,7 @@ export const HeartRateScanner: React.FC<HeartRateScannerProps> = ({
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
+    stopCameraStream(streamRef.current);
     setStreamActive(false);
   };
 

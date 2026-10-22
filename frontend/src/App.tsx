@@ -10,7 +10,9 @@ import { TRANSLATIONS, SYMPTOM_CATALOG } from './i18n/translations';
 import { evaluateRedFlags } from './services/redFlagEngine';
 import { getRankedFacilities } from './services/facilitiesData';
 import { submitAssessment, generateSOAPNote, generateFHIRBundle, initializeSession } from './services/api';
-import { speakText, createSpeechRecognizer } from './services/voice';
+import { speakDeviceText, startDeviceSpeechRecognition } from './device/speech';
+import { getDeviceLocation } from './device/geolocation';
+import { queueAssessmentOffline, setupAutoSyncListener } from './services/offlineQueue';
 import { HeartRateScanner } from './components/HeartRateScanner';
 import { EmergencyModal } from './components/EmergencyModal';
 import { FacilityView } from './components/FacilityView';
@@ -94,13 +96,15 @@ export function App() {
 
   useEffect(() => {
     initializeSession();
-    // Fetch Location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => console.info('Geolocation default to Nagpur region (21.0667, 78.9667)')
-      );
-    }
+    // Fetch Device Location with district fallback
+    getDeviceLocation(
+      (coords) => setUserCoords(coords),
+      (fallback) => setUserCoords(fallback)
+    );
+    // Setup offline auto-sync listener
+    setupAutoSyncListener((count) => {
+      alert(`Network restored! ${count} offline assessments synchronized successfully.`);
+    });
   }, []);
 
   // Demo presets for judges and instant testing
@@ -180,7 +184,8 @@ export function App() {
 
   // Voice recognition toggle
   const handleVoiceListen = () => {
-    const recognizer = createSpeechRecognizer(
+    setIsListening(true);
+    const rec = startDeviceSpeechRecognition(
       lang,
       (text, codes) => {
         setIsListening(false);
@@ -197,10 +202,8 @@ export function App() {
       () => setIsListening(false)
     );
 
-    if (recognizer) {
-      setIsListening(true);
-      recognizer.start();
-    } else {
+    if (!rec) {
+      setIsListening(false);
       alert(t.voice_unsupported);
     }
   };
@@ -209,13 +212,27 @@ export function App() {
   const handleAnalyze = async () => {
     setStep('PROCESSING');
     setTimeout(async () => {
-      const res = await submitAssessment({
+      const payload = {
         language: lang,
         lat: userCoords.lat,
         lng: userCoords.lng,
         features,
         heart_rate: heartRate,
-      });
+      };
+
+      const res = await submitAssessment(payload);
+
+      // If offline, queue in IndexedDB
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        await queueAssessmentOffline({
+          id: res.assessment_id,
+          timestamp: new Date().toISOString(),
+          payload,
+          localAssessment: res,
+        });
+        alert('Offline mode active: results saved locally and will auto-sync when network returns.');
+      }
+
       setAssessment(res);
       setStep('RESULT');
     }, 1200);
@@ -374,7 +391,7 @@ export function App() {
           <div className="glass-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h2 style={{ fontSize: '20px' }}>{t.consent_title}</h2>
-              <button className="speaker-btn" onClick={() => speakText(t.consent_body, lang)}>
+              <button className="speaker-btn" onClick={() => speakDeviceText(t.consent_body, lang)}>
                 <Volume2 size={20} />
               </button>
             </div>
@@ -448,7 +465,7 @@ export function App() {
           <div className="glass-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '20px' }}>{t.basic_title}</h2>
-              <button className="speaker-btn" onClick={() => speakText(`${t.basic_title}. ${t.age_label}, ${t.sex_label}, ${t.height_label}, ${t.weight_label}`, lang)}>
+              <button className="speaker-btn" onClick={() => speakDeviceText(`${t.basic_title}. ${t.age_label}, ${t.sex_label}, ${t.height_label}, ${t.weight_label}`, lang)}>
                 <Volume2 size={20} />
               </button>
             </div>
@@ -524,7 +541,7 @@ export function App() {
           <div className="glass-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '20px' }}>{t.lifestyle_title}</h2>
-              <button className="speaker-btn" onClick={() => speakText(`${t.lifestyle_title}. ${t.smoking_label}. ${t.alcohol_label}`, lang)}>
+              <button className="speaker-btn" onClick={() => speakDeviceText(`${t.lifestyle_title}. ${t.smoking_label}. ${t.alcohol_label}`, lang)}>
                 <Volume2 size={20} />
               </button>
             </div>
@@ -579,7 +596,7 @@ export function App() {
           <div className="glass-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '20px' }}>{t.history_title}</h2>
-              <button className="speaker-btn" onClick={() => speakText(t.history_title, lang)}>
+              <button className="speaker-btn" onClick={() => speakDeviceText(t.history_title, lang)}>
                 <Volume2 size={20} />
               </button>
             </div>
@@ -654,7 +671,7 @@ export function App() {
           <div className="glass-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '20px', color: '#F472B6' }}>🤰 {t.preg_title}</h2>
-              <button className="speaker-btn" onClick={() => speakText(t.preg_title, lang)}>
+              <button className="speaker-btn" onClick={() => speakDeviceText(t.preg_title, lang)}>
                 <Volume2 size={20} />
               </button>
             </div>
@@ -723,7 +740,7 @@ export function App() {
                 </button>
                 <button
                   className="speaker-btn"
-                  onClick={() => speakText(`${t.symptoms_title}. ${t.symptoms_sub}`, lang)}
+                  onClick={() => speakDeviceText(`${t.symptoms_title}. ${t.symptoms_sub}`, lang)}
                 >
                   <Volume2 size={18} />
                 </button>
@@ -773,7 +790,7 @@ export function App() {
           <div className="glass-card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h2 style={{ fontSize: '20px' }}>{t.vitals_title}</h2>
-              <button className="speaker-btn" onClick={() => speakText(t.vitals_title, lang)}>
+              <button className="speaker-btn" onClick={() => speakDeviceText(t.vitals_title, lang)}>
                 <Volume2 size={20} />
               </button>
             </div>
