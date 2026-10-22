@@ -173,7 +173,10 @@ export default function App() {
     <>
       <header className="header no-print">
         <div className="header-inner">
-        <button className="brand" onClick={() => step !== 'lang' && step !== 'consent' && go('home')}>{t.app_name}</button>
+        <button className="brand" onClick={() => step !== 'lang' && step !== 'consent' && go('home')}>
+          <img src="/favicon.png" alt="Logo" className="brand-logo" />
+          <span>{t.app_name}</span>
+        </button>
         <select aria-label="Language" value={lang} onChange={(e) => setLang(e.target.value as Language)}>
           {LANGS.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
         </select>
