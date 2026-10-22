@@ -1,0 +1,8 @@
+Model,Test set,n,Positives,Accuracy,Balanced acc.,Precision (PPV),Recall (sensitivity),Specificity,F1,AUROC
+M1 Hypertension,internal 2017–20,1590,635,0.745,0.763,0.636,0.849,0.676,0.727,0.841
+M1 Hypertension,external 2021–23,6084,2378,0.71,0.738,0.587,0.868,0.609,0.7,0.816
+M2 Undiagnosed diabetes,internal 2017–20,1323,40,0.71,0.705,0.07,0.7,0.71,0.127,0.786
+M2 Undiagnosed diabetes,external 2021–23,4826,128,0.716,0.668,0.056,0.617,0.718,0.103,0.753
+M3 CVD (no-lab),held-out test,13703,6781,0.672,0.674,0.621,0.863,0.484,0.722,0.789
+M4 Maternal (urgent),5-fold CV,452,112,0.794,0.83,0.552,0.902,0.759,0.685,0.927
+M5 PPG signal quality,5-fold CV by person,3887,830,0.843,0.763,0.636,0.624,0.903,0.63,0.854

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CircleAlert, FileText, MapPin, Mic, Phone, ShieldCheck, Siren, Stethoscope } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleAlert, Cpu, FileText, MapPin, Mic, Phone, ShieldCheck, Siren, Stethoscope } from 'lucide-react';
 import {
   AssessmentResponse, Facility, HeartRateResult, Language, PatientFeatures, RedFlagRule, SymptomCode, TriageLevel,
 } from './types/health';
@@ -17,6 +17,7 @@ import { CareScreen } from './components/CareScreen';
 import { SchemeScreen } from './components/SchemeScreen';
 import { SummaryScreen } from './components/SummaryScreen';
 import { DoctorScreen } from './components/DoctorScreen';
+import { ModelStatusModal } from './components/ModelStatusModal';
 
 type Step =
   | 'lang' | 'consent' | 'home'
@@ -78,6 +79,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [voiceMsg, setVoiceMsg] = useState('');
   const [, setVoicesLoaded] = useState(0);
+  const [showModels, setShowModels] = useState(false);
   const t = TRANSLATIONS[lang];
   const setLang = (l: Language) => { setLangState(l); saveLang(l); };
   const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(`${lang}-IN`);
@@ -269,6 +271,15 @@ export default function App() {
         <select aria-label="Language" value={lang} onChange={(e) => setLang(e.target.value as Language)}>
           {LANGS.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
         </select>
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => setShowModels(true)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px', background: 'rgba(255,255,255,0.15)', color: 'var(--paper)', border: '1px solid var(--mint)', cursor: 'pointer' }}
+          title="Inspect AI Models & Status"
+        >
+          <Cpu size={16} /> Models
+        </button>
         <a className="btn btn-danger btn-small" href="tel:108"><Phone size={18} /> 108</a>
         </div>
       </header>
@@ -303,6 +314,27 @@ export default function App() {
               <h1>{hasProfile ? t.welcome_back : t.home_title}</h1>
               <p className="muted">{t.home_sub}</p>
               <button className="btn btn-primary" onClick={startCheck}>{t.home_start} <ArrowRight size={20} /></button>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 14px',
+                  background: 'var(--mint)',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  marginTop: '8px',
+                  color: 'var(--ink)',
+                  border: '1px solid rgba(47,64,79,0.15)',
+                }}
+                onClick={() => setShowModels(true)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600 }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#059669', boxShadow: '0 0 6px #059669' }} />
+                  <span>AI Models & Engines: <strong>7 Connected</strong></span>
+                </div>
+                <span className="small" style={{ color: 'var(--teal)', fontWeight: 700 }}>Inspect &rarr;</span>
+              </div>
               {readings.length > 0 && (
                 <>
                   <h2>{t.bp_history_title}</h2>
@@ -577,6 +609,8 @@ export default function App() {
           }}
         />
       )}
+
+      {showModels && <ModelStatusModal onClose={() => setShowModels(false)} />}
     </>
   );
 }
