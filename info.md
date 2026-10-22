@@ -108,7 +108,9 @@ Hypertension: if the training label is derived from BP, BP must not be an input 
 - Skipped on purpose: a condition the user already has (known diabetes → no diabetes score), CVD without a BP reading, maternal when not pregnant.
 - Measured BP ≥ 140/90 raises hypertension to at least Medium by rule (`model_version` ends in `+bp-rule`).
 - Loading is restricted to numpy/sklearn/joblib classes (pickles can run code). Requires `scikit-learn==1.9.1`.
-- **Open for Pravesh:** confirm `smoking_status` coding (assumed 0 never / 1 former / 2 current) and the alcohol/activity mappings in `risk.py`; CVD gives High for a 26-year-old with BP 145/95 (Kaggle dataset effect), so check whether CVD should be skipped in pregnancy.
+- `smoking_status`: 0 never / 1 former / 2 current (confirmed by Pravesh). The intake only asks yes/no, so smokers are sent as 2.
+- Pregnancy: the CVD card is still shown, with a `note` that it is not validated in pregnancy (the Kaggle data had no pregnant women), and it does not affect triage. The maternal model and rules decide.
+- Still to confirm with Pravesh: alcohol (yes = 104 days/year, 2 drinks/day) and activity (low/moderate/high = 0/150/300 min/week) mappings in `risk.py`.
 
 ### Original contract (superseded by the bundles above)
 

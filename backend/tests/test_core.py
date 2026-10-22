@@ -80,6 +80,12 @@ def test_models_loaded_and_explained():
     assert m.level == "high" and m.class_probabilities and m.top_factors[0].feature == "systolic"
     assert rules.triage([], [m], priya) == "urgent"
 
+    # pregnancy: CVD is shown with a caveat but never drives triage
+    cvd = risk.predict("cvd", priya, None, "en")
+    assert cvd is not None and cvd.note and out["cvd"].note is None
+    calm = feat(age=26, is_pregnant=True, systolic=120, diastolic=80)
+    assert rules.triage([], [rr("cvd", "high")], calm) == "self_care"
+
     assert risk.predict("diabetes", feat(known_diabetes=True), None, "en") is None  # already diagnosed
     assert risk.predict("cvd", feat(), None, "en") is None  # CVD model needs BP
 

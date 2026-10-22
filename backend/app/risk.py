@@ -176,7 +176,16 @@ def predict(condition: str, f: Features, hr: HeartRate | None, language: str) ->
         condition=condition, probability=round(p, 2), level=level, model_version=version,
         class_probabilities=class_probabilities,
         top_factors=[Factor(feature=k, impact=round(v, 2), text=factor_text(k, language)) for k, v in top],
+        # CVD data had no pregnant women; pregnancy BP is judged by the maternal model (and rules.triage ignores this card).
+        note=CVD_PREGNANCY_NOTE[("en", "hi", "mr").index(language)] if condition == "cvd" and f.is_pregnant else None,
     )
+
+
+CVD_PREGNANCY_NOTE = (
+    "Not validated in pregnancy. Your BP is checked by the pregnancy risk model.",
+    "गर्भावस्था में यह स्कोर प्रमाणित नहीं है। आपका BP गर्भावस्था जोखिम मॉडल से जाँचा जाता है।",
+    "गरोदरपणात हा स्कोअर प्रमाणित नाही. तुमचा BP गरोदरपणाच्या जोखीम मॉडेलद्वारे तपासला जातो.",
+)
 
 
 FACTOR_TEXT = {

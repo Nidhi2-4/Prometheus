@@ -89,6 +89,7 @@ class RiskResult(BaseModel):
     model_version: str
     class_probabilities: dict[str, float] | None = None  # maternal only: low / mid / high
     top_factors: list[Factor]
+    note: str | None = None  # caveat to show on the card, in the user's language
 
 
 class AssessOut(BaseModel):

@@ -206,6 +206,7 @@ If `emergency: true` → open the **Emergency Alert** right away:
 - `text` comes back already translated into `language`.
 - Optional fields (`systolic`, `heart_rate`, `blood_sugar_mgdl`, `body_temp_c`, …) can be `null` if the user skipped them.
 - `results` has **2 to 4 items**, render whatever comes back. A condition is left out when it does not apply: already diagnosed (known diabetes → no diabetes card), no BP reading (no CVD card), not pregnant (no maternal card).
+- If a result has a `note`, show it on that card (already translated). Example: pregnant users still get a CVD card, with a note that it is not validated in pregnancy; that card does not affect the triage level.
 - Pregnant users get a `maternal` result with `class_probabilities: {"low", "mid", "high"}`. Optional maternal inputs: `blood_sugar_mgdl`, `body_temp_c`.
 - `top_factors` can have fewer than 3 items (only reasons that are true for this user are shown). `impact: 0` means a rule, not the model (e.g. measured BP ≥ 140/90).
 

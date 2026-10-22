@@ -37,6 +37,8 @@ def triage(flags: list[RuleHit], results: list[RiskResult], f: Features) -> str:
     """First match wins (info.md section 6)."""
     s = set(f.symptoms)
     sbp, dbp = f.systolic or 0, f.diastolic or 0
+    if f.is_pregnant:  # CVD model is not validated in pregnancy; maternal model + rules decide
+        results = [r for r in results if r.condition != "cvd"]
     if flags:
         return "emergency"
     if sbp >= 160 or dbp >= 100:
