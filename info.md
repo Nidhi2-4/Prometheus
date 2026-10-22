@@ -200,7 +200,33 @@ Storage: assessments live in backend memory (lost on restart). Add SQLite when a
 | CVD | `models/cvd/cvd_nolab_bundle.joblib` | LightGBM + isotonic (Kaggle 70k). Needs BP | low < 0.30 ≤ medium < 0.60 ≤ high |
 | Maternal | `models/maternal/maternal_bundle.joblib` | Random Forest, 3-class + separate high-risk model | High if p(high) ≥ 0.25, else the 3-class winner |
 
-Not used: `cvd_lab_bundle` (needs cholesterol and glucose), `dm_bundle_nofh`, `htn_model.txt` (same model as the bundle). Hypertension AUC: 0.84 internal, 0.82 external (`models/hypertension/metrics.json`). Other metrics still to come from Pravesh.
+Not used: `cvd_lab_bundle` (needs cholesterol and glucose), `dm_bundle_nofh` (for the 2021–23 test only), `htn_model.txt` (same model as the bundle).
+
+### How they were trained (`ml/`, Pravesh)
+
+- `ml/Model_1_dataset.py`, `ml/Model_2_dataset.py` build the NHANES datasets (2017–20 = train/validate, 2021–23 = external test). `ml/Promethius.ipynb` trains and evaluates all four. Datasets are not in the repo (1 GB, public sources).
+- **Hypertension:** NHANES adults 18–80, **pregnant women excluded**. Label = measured BP ≥ 140/90 or on BP medicine (so it includes treated hypertension). BP itself is not a feature. LightGBM with monotone constraints (risk only rises with age, BMI, waist, diabetes), 60/20/20 split, isotonic calibration on the validation split. Top drivers: age, waist, known diabetes, BMI, activity.
+- **Diabetes:** NHANES adults 20–80, pregnant excluded. Label = HbA1c ≥ 6.5 or diagnosed or on medicine; evaluated on **undiagnosed** diabetes among people not yet diagnosed (that is the app's job). Beats the Indian Diabetes Risk Score baseline (AUROC 0.79 vs 0.72). Referral threshold set to refer the top 25 %.
+- **CVD:** Kaggle cardio 70k (ages 30–65, 65 % women). Rows with impossible values removed (BP outside 80–240 / 40–150, systolic ≤ diastolic). "No-lab" model: age, sex, BMI, BP, smoker, alcohol, active.
+- **Maternal:** UCI maternal health (1,014 rows, 55 % duplicates → 452 unique). Random Forest picked for high-risk recall. Separate high-vs-not model, threshold 0.25 catches 90 % of high-risk. Plus a clinical rule layer (below).
+- Values outside the training ranges were set to missing during training (e.g. BMI outside 13–70); the backend does the same.
+
+### Test-set metrics (`models/diabetes/final_metrics.csv`, also served by `GET /models`)
+
+| Model | Test set | n | AUROC | Sensitivity | Specificity | PPV |
+|---|---|---|---|---|---|---|
+| Hypertension | internal 2017–20 | 1,590 | 0.841 | 0.849 | 0.676 | 0.636 |
+| Hypertension | external 2021–23 | 6,084 | 0.816 | 0.868 | 0.609 | 0.587 |
+| Undiagnosed diabetes | internal 2017–20 | 1,323 | 0.786 | 0.975 | 0.394 | 0.048 |
+| Undiagnosed diabetes | external 2021–23 | 4,826 | 0.753 | 0.961 | 0.381 | 0.041 |
+| CVD (no lab) | held-out test | 13,703 | 0.789 | 0.863 | 0.484 | 0.621 |
+| Maternal (urgent) | 5-fold CV | 452 | 0.927 | 0.902 | 0.759 | 0.552 |
+
+Read the diabetes row honestly: it is a screening net (catches ~96 % of undiagnosed cases) with many false alarms (PPV ~4–5 %), which is acceptable for "go get a blood test", not for a diagnosis. Confusion matrices: `models/confusion_matrices.png`.
+
+### Camera heart rate: what Pravesh's notebook assumes
+
+The notebook's PPG section (`Heart PPG`, BUT-PPG dataset) is designed for **fingertip on camera + flash, red channel**, with a LightGBM signal-quality model. Our app measures the **face, green channel** (as the problem statement asks). That PPG bundle was not saved (`models/ppg/` does not exist), so the backend uses its own filter + FFT + peak-share quality gate. Team decision pending: keep face rPPG, or add a fingertip mode (more accurate, uses his quality model once saved).
 
 ### How the backend uses them (`backend/app/risk.py`)
 
@@ -208,9 +234,10 @@ Not used: `cvd_lab_bundle` (needs cholesterol and glucose), `dm_bundle_nofh`, `h
 - **A reason is only shown when it is true for the user.** SHAP can push risk up for a "safe" value (non-drinkers in NHANES); we never tell a non-drinker "regular alcohol use".
 - **Values we don't ask** (waist, sleep, sedentary minutes) are sent as missing; the LightGBM models learned missing values. Maternal fills missing blood sugar / temperature / heart rate with UCI medians (7.5 mmol/L, 98 °F, 76 bpm). Missing values are never used as reasons.
 - **Mappings:** smoking yes → `smoking_status` 2 (0 never, 1 former, 2 current, confirmed by Pravesh). Alcohol yes → 104 days/year, 2 drinks/day. Activity low/moderate/high → 0/150/300 min/week; CVD `active` = not low. Blood sugar mg/dL → mmol/L, °C → °F for the maternal model.
-- **Skipped on purpose:** a condition already diagnosed (known diabetes → no diabetes card), CVD without a BP reading (the model never saw missing BP), maternal when not pregnant. So `results` has 2–4 cards.
+- **Skipped on purpose:** a condition already diagnosed (known diabetes → no diabetes card), anyone under 18 for the three chronic models (trained on adults), CVD without a valid BP reading (80–240 / 40–150, systolic > diastolic, as in its training data), maternal when not pregnant. So `results` has 0–4 cards.
+- **Maternal rule layer** (Pravesh's `maternal_risk()`, only with values the user gave): BP ≥ 160/110, blood sugar ≥ 11.1 mmol/L (200 mg/dL) or heart rate ≥ 120 → High; BP ≥ 140/90, temperature ≥ 100.4 °F or age < 18 / ≥ 35 lift Low to Medium. `model_version` ends with `+rules` when a rule changed the level.
 - **BP rule:** measured BP ≥ 140/90 lifts hypertension to at least Medium and puts BP first in the reasons (`model_version` ends with `+bp-rule`).
-- **Pregnancy:** the CVD card is still shown, with a translated `note` ("not validated in pregnancy"), and it does not affect triage. The Kaggle CVD data had no pregnant women.
+- **Pregnancy:** hypertension, diabetes and CVD cards are still shown, each with a translated `note` ("not validated in pregnancy, follow the pregnancy card"), and they do not affect triage. None of their training sets had pregnant women.
 - **Safe loading:** pickles can run code, so loading only allows numpy / sklearn / joblib classes (a test proves a malicious pickle is blocked). Needs `scikit-learn==1.9.1`, the version the models were trained with.
 - **Version string:** `<file>-<sha1 prefix>`, shown on every card.
 
@@ -240,7 +267,7 @@ Triage (first match wins, `rules.triage`):
 3. Any Medium/High risk, or cough with fever/breathlessness → **Routine** (PHC within a week)
 4. Otherwise → **Self-care**
 
-In pregnancy the CVD card is ignored for triage. Acute symptoms: hypertension — severe headache, blurred vision, chest pain; diabetes — blurred vision, persistent vomiting, extreme drowsiness; CVD — chest pain, breathlessness, arm/jaw pain.
+In pregnancy only the maternal card counts for triage (plus red flags and the pregnancy BP rule). Acute symptoms: hypertension — severe headache, blurred vision, chest pain; diabetes — blurred vision, persistent vomiting, extreme drowsiness; CVD — chest pain, breathlessness, arm/jaw pain.
 
 Input ranges (validated in the app and the API): age 1–120, height 50–250 cm, weight 2–300 kg, systolic 60–260, diastolic 30–160, pregnancy 1–42 weeks. Symptom codes: [FRONTEND.md](FRONTEND.md) section 4.
 
@@ -355,7 +382,7 @@ Real: red-flag rules, the four trained models and their SHAP reasons, rPPG signa
 | 3 | rPPG accuracy: 10+ people, phone vs pulse oximeter, different lighting → mean error; tune `rppg.py` thresholds | Team |
 | 4 | Verify facility coordinates on OpenStreetMap; add phone numbers from official sources only | Anish |
 | 5 | Run one FHIR export through the HAPI validator | Anish |
-| 6 | Metrics (AUC, recall for High, dataset) for diabetes, CVD, maternal → `metrics.json` next to each bundle | Pravesh |
+| 6 | Decide face rPPG vs fingertip PPG; if fingertip, save Pravesh's `ppg_quality_bundle.joblib` (section 6) | Team |
 | 7 | Confirm alcohol and activity mappings (section 6) | Pravesh |
 | 8 | Native speaker check of Gujarati / Telugu / Kannada reason texts | Nidhi |
 | 9 | Verify PM-JAY criteria on pmjay.gov.in | Anish |
@@ -378,7 +405,8 @@ Nice to have: BP history/trend, assessment history (SQLite), model transparency 
 | 2026-10-22 | rPPG sends green-channel numbers, not video | Smaller upload, no video processing on server, privacy |
 | 2026-10-22 | No cough model | Problem statement: pick rPPG over cough |
 | 2026-10-22 | Pregnancy: show CVD with a caveat, ignore it for triage | Not validated in pregnancy, but hiding it was not wanted |
-| 2026-10-22 | `smoking_status` 0 never / 1 former / 2 current | Confirmed by Pravesh |
+| 2026-10-22 | `smoking_status` 0 never / 1 former / 2 current | Confirmed by Pravesh (and in `ml/Model_1_dataset.py`) |
+| 2026-10-22 | All chronic cards get the pregnancy caveat; chronic models skipped under 18; maternal rule layer added | Matches how the models were trained (`ml/Promethius.ipynb`) |
 
 ---
 
@@ -397,7 +425,7 @@ Nice to have: BP history/trend, assessment history (SQLite), model transparency 
 ## 18. Slide notes
 
 - "Triage support, not diagnosis" on the first and last slide.
-- Models: LightGBM (gradient-boosted trees, same family as XGBoost) for three chronic risks, Random Forest for maternal; calibrated; per-patient SHAP. Show the metrics table once Pravesh sends it.
+- Models: LightGBM (gradient-boosted trees, same family as XGBoost) for three chronic risks, Random Forest for maternal; calibrated; per-patient SHAP. Show the metrics table from section 6 and `models/confusion_matrices.png`; mention the external 2021–23 test (hypertension 0.82, diabetes 0.75) and that diabetes beats the Indian Diabetes Risk Score.
 - Safety: emergency rules are deterministic and run offline; ML never decides an emergency; the maternal model is backed by pregnancy rules.
 - rPPG: "video never leaves the phone"; show the measured error vs pulse oximeter and the failure cases. Don't claim accuracy we have not measured.
 - Facilities: "time to see a doctor" ranking; availability is simulated through a FHIR-shaped partner API.

@@ -1,7 +1,7 @@
 """Risk scores from Pravesh's models in models/: LightGBM + isotonic calibration (hypertension, diabetes, CVD)
 and a Random Forest (maternal). Explanations are per-patient SHAP values."""
+import csv
 import hashlib
-import json
 import os
 import pickle
 from collections import defaultdict
@@ -21,7 +21,10 @@ BUNDLES = {
     "maternal": "maternal/maternal_bundle.joblib",
 }
 CONDITIONS = tuple(BUNDLES)
+CHRONIC = ("hypertension", "diabetes", "cvd")  # trained on non-pregnant adults (ml/Promethius.ipynb)
 LEVELS = ("low", "medium", "high")
+METRICS_CSV = MODEL_DIR / "diabetes" / "final_metrics.csv"  # written by the last notebook cell, all four models
+METRICS_ROW = {"M1": "hypertension", "M2": "diabetes", "M3": "cvd", "M4": "maternal"}
 
 
 def safe_load(path: Path):
@@ -40,7 +43,20 @@ def safe_load(path: Path):
         numpy_pickle.NumpyUnpickler.find_class = original
 
 
+def _metrics() -> dict:
+    """Test-set metrics per condition from final_metrics.csv (one row per test set)."""
+    out = defaultdict(list)
+    if METRICS_CSV.exists():
+        with METRICS_CSV.open(encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                condition = METRICS_ROW.get(row["Model"].split()[0])
+                if condition:
+                    out[condition].append({k: (float(v) if k not in ("Model", "Test set") else v) for k, v in row.items()})
+    return out
+
+
 def _load() -> dict:
+    metrics = _metrics()
     models = {}
     for condition, rel in BUNDLES.items():
         path = MODEL_DIR / rel
@@ -53,8 +69,7 @@ def _load() -> dict:
             import shap  # slow import (~4 s), only needed for the Random Forest
             b["explainer"] = shap.TreeExplainer(b["model_high"])
         b["version"] = f"{path.stem}-{hashlib.sha1(path.read_bytes()).hexdigest()[:8]}"
-        metrics = path.parent / "metrics.json"
-        b["metrics"] = json.loads(metrics.read_text()) if metrics.exists() else {}
+        b["metrics"] = metrics.get(condition, [])
         models[condition] = b
     return models
 
@@ -106,8 +121,9 @@ def bmi(f: Features) -> float:
 def _inputs(f: Features, hr: HeartRate | None) -> dict:
     """Intake mapped to every model's feature names. None = not known."""
     good_hr = hr.bpm if hr and hr.bpm and hr.quality != "poor" else None
+    body_mass = bmi(f) if 13 <= bmi(f) <= 70 else None  # training set out-of-range BMI to missing too
     return {
-        "age": f.age, "sex_female": float(f.sex == "F"), "bmi": bmi(f), "sbp": f.systolic, "dbp": f.diastolic,
+        "age": f.age, "sex_female": float(f.sex == "F"), "bmi": body_mass, "sbp": f.systolic, "dbp": f.diastolic,
         "smoker": float(f.smoker), "smoking_status": 2.0 if f.smoker else 0.0,  # assumed 0 never, 1 former, 2 current
         "alcohol": float(f.alcohol),
         "alcohol_days_per_year": 104.0 if f.alcohol else 0.0, "alcohol_drinks_per_day": 2.0 if f.alcohol else 0.0,
@@ -132,23 +148,44 @@ def _row(features: list[str], x: dict, fill: dict):
     return np.array([values]), unknown
 
 
+def _maternal_rules(f: Features, hr: HeartRate | None) -> tuple[bool, bool]:
+    """Pravesh's clinical layer on top of the maternal model (maternal_risk() in ml/Promethius.ipynb).
+    Returns (severe, flagged). Only values the user actually gave count."""
+    sbp, dbp = f.systolic or 0, f.diastolic or 0
+    sugar = f.blood_sugar_mgdl / 18 if f.blood_sugar_mgdl else 0  # mmol/L
+    temp_f = f.body_temp_c * 9 / 5 + 32 if f.body_temp_c else 0
+    pulse = hr.bpm if hr and hr.bpm and hr.quality != "poor" else 0
+    severe = sbp >= 160 or dbp >= 110 or sugar >= 11.1 or pulse >= 120
+    flagged = sbp >= 140 or dbp >= 90 or temp_f >= 100.4 or f.age < 18 or f.age >= 35
+    return severe, flagged
+
+
 def predict(condition: str, f: Features, hr: HeartRate | None, language: str) -> RiskResult | None:
-    """None when the condition does not apply: not pregnant, already diagnosed, BP missing for CVD, no model."""
+    """None when the condition does not apply: not pregnant, already diagnosed, a child (chronic models are
+    adult-only), BP missing or outside what the CVD model saw, no model."""
     b = MODELS.get(condition)
     if b is None or getattr(f, SKIP_IF_KNOWN.get(condition, ""), False):
         return None
     if condition == "maternal" and not f.is_pregnant:
         return None
-    if condition == "cvd" and not (f.systolic and f.diastolic):  # this model never saw missing BP
+    if condition in CHRONIC and f.age < 18:
+        return None
+    sbp, dbp = f.systolic or 0, f.diastolic or 0
+    if condition == "cvd" and not (80 <= sbp <= 240 and 40 <= dbp <= 150 and sbp > dbp):  # its training filter
         return None
 
     x = _inputs(f, hr)
     class_probabilities = None
+    version = b["version"]
     if condition == "maternal":
         X, unknown = _row(b["features"], x, MATERNAL_FILL)
         p3 = b["model_3class"].predict_proba(X)[0]  # classes 0 low, 1 mid, 2 high
         p = float(b["model_high"].predict_proba(X)[0, 1])
         level = "high" if p >= b["threshold_high"] else LEVELS[int(p3.argmax())]
+        severe, flagged = _maternal_rules(f, hr)
+        if severe or (flagged and level == "low"):
+            level = "high" if severe else "medium"
+            version += "+rules"
         contrib = np.asarray(b["explainer"].shap_values(X))[0, :, 1]
         class_probabilities = {"low": round(float(p3[0]), 2), "mid": round(float(p3[1]), 2), "high": round(float(p3[2]), 2)}
     else:
@@ -163,7 +200,6 @@ def predict(condition: str, f: Features, hr: HeartRate | None, language: str) ->
             impact[FEATURE_KEY.get(name, name)] += float(c)
     top = sorted(((k, v) for k, v in impact.items() if v >= 0.01 and APPLIES.get(k, lambda f, hr: True)(f, hr)),
                  key=lambda kv: -kv[1])[:3]
-    version = b["version"]
 
     # The hypertension model has no BP input (label leakage). A measured BP >= 140/90 is handled by rule.
     if condition == "hypertension" and ((f.systolic or 0) >= 140 or (f.diastolic or 0) >= 90):
@@ -176,18 +212,18 @@ def predict(condition: str, f: Features, hr: HeartRate | None, language: str) ->
         condition=condition, probability=round(p, 2), level=level, model_version=version,
         class_probabilities=class_probabilities,
         top_factors=[Factor(feature=k, impact=round(v, 2), text=factor_text(k, language)) for k, v in top],
-        # CVD data had no pregnant women; pregnancy BP is judged by the maternal model (and rules.triage ignores this card).
-        note=CVD_PREGNANCY_NOTE[LANGS.index(language)] if condition == "cvd" and f.is_pregnant else None,
+        # No pregnant women in any chronic training set; the maternal card decides (rules.triage ignores these).
+        note=PREGNANCY_NOTE[LANGS.index(language)] if condition in CHRONIC and f.is_pregnant else None,
     )
 
 
-CVD_PREGNANCY_NOTE = (
-    "Not validated in pregnancy. Your BP is checked by the pregnancy risk model.",
-    "गर्भावस्था में यह स्कोर प्रमाणित नहीं है। आपका BP गर्भावस्था जोखिम मॉडल से जाँचा जाता है।",
-    "गरोदरपणात हा स्कोअर प्रमाणित नाही. तुमचा BP गरोदरपणाच्या जोखीम मॉडेलद्वारे तपासला जातो.",
-    "ગર્ભાવસ્થામાં આ સ્કોર પ્રમાણિત નથી. તમારું BP ગર્ભાવસ્થા જોખમ મૉડલથી તપાસાય છે.",
-    "గర్భధారణలో ఈ స్కోరు ధృవీకరించబడలేదు. మీ BP గర్భధారణ ప్రమాద మోడల్ ద్వారా తనిఖీ చేయబడుతుంది.",
-    "ಗರ್ಭಾವಸ್ಥೆಯಲ್ಲಿ ಈ ಸ್ಕೋರ್ ದೃಢೀಕರಿಸಲಾಗಿಲ್ಲ. ನಿಮ್ಮ BP ಗರ್ಭಾವಸ್ಥೆಯ ಅಪಾಯ ಮಾದರಿಯಿಂದ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.",
+PREGNANCY_NOTE = (
+    "Not validated in pregnancy. Follow the pregnancy risk card.",
+    "गर्भावस्था में यह स्कोर प्रमाणित नहीं है। गर्भावस्था जोखिम कार्ड देखें।",
+    "गरोदरपणात हा स्कोअर प्रमाणित नाही. गरोदरपणाचे जोखीम कार्ड पाहा.",
+    "ગર્ભાવસ્થામાં આ સ્કોર પ્રમાણિત નથી. ગર્ભાવસ્થા જોખમ કાર્ડ જુઓ.",
+    "గర్భధారణలో ఈ స్కోరు ధృవీకరించబడలేదు. గర్భధారణ ప్రమాద కార్డును చూడండి.",
+    "ಗರ್ಭಾವಸ್ಥೆಯಲ್ಲಿ ಈ ಸ್ಕೋರ್ ದೃಢೀಕರಿಸಲಾಗಿಲ್ಲ. ಗರ್ಭಾವಸ್ಥೆಯ ಅಪಾಯ ಕಾರ್ಡ್ ನೋಡಿ.",
 )
 
 

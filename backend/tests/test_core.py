@@ -95,6 +95,16 @@ def test_models_loaded_and_explained():
 
     assert risk.predict("diabetes", feat(known_diabetes=True), None, "en") is None  # already diagnosed
     assert risk.predict("cvd", feat(), None, "en") is None  # CVD model needs BP
+    assert risk.predict("cvd", feat(systolic=90, diastolic=95), None, "en") is None  # outside its training data
+    assert risk.predict("hypertension", feat(age=12), None, "en") is None  # chronic models are adult-only
+
+    # Pravesh's maternal rule layer: very high blood sugar is always High, age >= 35 lifts Low to at least Medium
+    sugar = risk.predict("maternal", feat(age=26, is_pregnant=True, systolic=110, diastolic=70, blood_sugar_mgdl=250), None, "en")
+    assert sugar.level == "high" and sugar.model_version.endswith("+rules")
+    older = risk.predict("maternal", feat(age=38, is_pregnant=True, systolic=110, diastolic=70), None, "en")
+    assert older.level in ("medium", "high")
+
+    assert {c: len(b["metrics"]) for c, b in risk.MODELS.items()} == {"hypertension": 2, "diabetes": 2, "cvd": 1, "maternal": 1}
 
 
 class _Evil:
