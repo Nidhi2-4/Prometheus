@@ -1,411 +1,404 @@
-# SwasthSetu — Project Info
+# Swasthik — Project Reference
 
-Single page with everything the team needs: what we build, who owns what, the stack, the models, the API contract and the open decisions.
-Master reference: `docs/Documentation - Health Risk Detection.pdf`. When this file and the PDF disagree, this file has the latest decisions.
+The one place to look things up: what we built, how to run it, how each part works, what is simulated, what is still open.
+Frontend contract with full request/response examples: [FRONTEND.md](FRONTEND.md). Live API with "Try it out": `<backend-url>/docs`.
+Original spec (older decisions): `docs/Documentation - Health Risk Detection.pdf`. Problem statement: `image.png`.
+**When this file disagrees with the PDF or PROJECT_SPEC.md, this file is current.** Last updated 2026-10-22.
 
 > Triage support, not diagnosis. Every result screen, PDF and API response says so.
 
 ---
 
-## 1. What we are building
+## Contents
 
-**Phase 1 (now): a mobile-first web app** that runs in the phone browser (installable as a PWA).
-**Phase 2 (after the web version is complete): the native mobile app**, reusing the same backend and API.
+1. [What we built](#1-what-we-built)
+2. [Team](#2-team)
+3. [Status against the problem statement](#3-status-against-the-problem-statement)
+4. [Run it locally](#4-run-it-locally)
+5. [Architecture and repo layout](#5-architecture-and-repo-layout)
+6. [Risk models](#6-risk-models)
+7. [Red flags and triage](#7-red-flags-and-triage)
+8. [Camera heart rate (rPPG)](#8-camera-heart-rate-rppg)
+9. [Facility recommender and live availability](#9-facility-recommender-and-live-availability)
+10. [PM-JAY eligibility](#10-pm-jay-eligibility)
+11. [Reports: summary, SOAP, FHIR](#11-reports-summary-soap-fhir)
+12. [Sessions](#12-sessions)
+13. [API reference](#13-api-reference)
+14. [What is simulated](#14-what-is-simulated)
+15. [Before the demo (to do)](#15-before-the-demo-to-do)
+16. [Decision log](#16-decision-log)
+17. [Gotchas](#17-gotchas)
+18. [Slide notes](#18-slide-notes)
 
-A patient goes through a guided check and gets:
+---
 
-1. An instant **emergency warning** if any red flag is present (deterministic rules, no ML).
-2. **Risk scores** for hypertension, diabetes and cardiovascular disease, each with the top 3 reasons (SHAP).
-3. **Camera heart rate** (rPPG) with a signal-quality check and openly stated accuracy limits.
+## 1. What we built
+
+A mobile-first **web app** (installable PWA). A patient answers a short guided check by tapping icons or speaking, and gets:
+
+1. An instant **emergency alert** when a red flag is present (deterministic rules, no ML), with Call 108 and the nearest emergency facility.
+2. **Risk cards** for hypertension, diabetes, cardiovascular disease and (if pregnant) maternal risk, each with plain-language reasons from SHAP.
+3. A **camera heart rate** reading with a signal-quality gate. The video never leaves the phone.
 4. A **triage level**: Emergency / Urgent / Routine / Self-care.
-5. The **best nearby facility**, based on distance, cost / PM-JAY, wait time, availability and rating.
-6. Outputs: a **printable summary**, a **SOAP note** for clinicians and a **FHIR R4 JSON** export.
+5. **Nearby facilities** ranked by how fast the patient can actually see a doctor, with cost, PM-JAY and rating.
+6. A **printable summary** (PDF), a **SOAP note** for the clinician and a **FHIR R4** export.
 
-Languages: English, Hindi, Marathi (voice plus big icon buttons).
+Languages: English, Hindi, Marathi, Gujarati, Telugu, Kannada.
 
-Demo stories:
-- **Emergency:** chest pain + sweating → red alert + nearest emergency hospital.
-- **Sunita (chronic):** 45 years, high BMI, family history of diabetes → Medium hypertension, High diabetes, PHC recommendation, PDF.
-- **Priya (pregnant):** raised BP + swelling → Urgent, maternity-capable facility.
-- **Clinician view:** the same case as a SOAP note and FHIR JSON.
+Phase 2 (after the web version is complete): native mobile app reusing the same backend and API (Capacitor wrapper or Expo, not decided).
+
+### Demo stories
+
+| Story | Input | Expected result (checked 2026-10-22 on the real models) |
+|---|---|---|
+| Emergency | Chest pain + cold sweat | RF01 fires → full-screen alert, Call 108, nearest emergency hospital |
+| Sunita, 45 F | BMI 30, low activity, family history of diabetes, BP 142/92, headache, dizziness, frequent urination | Hypertension **Medium**, Diabetes **High**, triage **Routine**, nearest PHC, PDF |
+| Priya, 26 F, pregnant 24 wk | BP 145/95, swelling | Maternal **High** (0.88), triage **Urgent**, maternity facilities; CVD card shows "not validated in pregnancy" |
+| Clinician view | Any of the above | SOAP note + FHIR JSON |
 
 ---
 
 ## 2. Team
 
-| Person  | Owns |
-|---------|------|
-| Anish   | Backend (FastAPI): API, rules, triage, facilities, reports, model integration |
-| Pravesh | ML models + SHAP, delivered through a `predict()` function (see section 5) |
-| Nidhi   | Frontend + documentation |
+| Person | Owns |
+|---|---|
+| Anish | Backend (FastAPI): API, rules, triage, facilities, reports, model integration |
+| Pravesh | ML models (delivered in `models/`) |
+| Nidhi | Frontend (React + Vite PWA) and documentation |
 
 ---
 
-## 3. Latest changes (vs the PDF)
+## 3. Status against the problem statement
 
-| Topic | PDF says | Now |
-|-------|----------|-----|
-| Platform | React Native Expo Android app | **Web app first** (React + Vite PWA). Native mobile app only after the web version is complete |
-| Auth | Supabase JWT | **Sessions** (see section 7) |
-| Location | not fixed | **GPS** via the browser / device location API; manual district list if permission is denied |
-| ML algorithm | XGBoost | **XGBoost dropped.** Pravesh is choosing (Random Forest / Logistic Regression likely). The backend does not care which one, see section 5 |
-| Facility ranking | distance + type + scheme | Ranked by **time to see a doctor** (travel + doctor arrival + queue). Then cost / PM-JAY, rating (section 8) |
-| Doctor availability | not covered | Hospitals push roster/queue to a partner endpoint (simulated for the demo, section 8) |
-
----
-
-## 4. Tech stack
-
-**Frontend (phase 1, web):** React + Vite + TypeScript + `vite-plugin-pwa`, `react-i18next`, `react-leaflet` + OpenStreetMap, IndexedDB for the offline queue. Hosted on Vercel. Full guide: [frontend.md](frontend.md).
-Why web first: camera heart rate needs per-frame pixel access (a few lines with canvas in the browser, a native module + dev build in React Native), the browser has free speech APIs, and judges only need a link.
-
-**Mobile (phase 2):** decided after the web version is done. Options: wrap the same web code with Capacitor (fastest reuse), or a native Expo app. The backend and API stay the same either way, so keep all API calls in one frontend module.
-
-**Backend: Python 3.11 + FastAPI.** Why not Node:
-- Pravesh's models are Python (scikit-learn, `.joblib`). SHAP only exists in Python. A Node backend would still need a Python server next to it.
-- Signal processing for rPPG (detrend, bandpass, FFT) is a few lines with NumPy/SciPy.
-- FastAPI generates Swagger docs at `/docs` and an OpenAPI schema at `/openapi.json`, so the frontend always sees the current contract.
-
-Libraries: `fastapi`, `uvicorn`, `pydantic`, `numpy`, `scipy`, `scikit-learn`, `shap`, `joblib`, `itsdangerous` (signed session cookie).
-Storage: SQLite (Python stdlib) for the demo. Supabase only if we need history across devices.
-Hosting: Render or Railway (HTTPS is required, see section 10).
+| Requirement | Status | Where |
+|---|---|---|
+| Voice + icon intake in 2–3 languages | ✅ 6 languages, icon symptom cards, speech input and read-aloud | `frontend/src/services/voice.ts`, `i18n/translations.ts` |
+| Emergency red flags, deterministic, no ML | ✅ RF01–RF10, same rules on device and server, tested | `backend/app/rules.py`, `frontend/src/services/redFlagEngine.ts` |
+| Risk scoring for 2–3 conditions (XGBoost / Random Forest) | ✅ Hypertension, diabetes, CVD with **LightGBM** (gradient boosting, same family as XGBoost); maternal with **Random Forest** | `models/`, `backend/app/risk.py` |
+| SHAP explanations | ✅ per-patient TreeSHAP, top reasons in the user's language | `backend/app/risk.py` |
+| One smartphone screening tool: rPPG | ✅ pipeline works; ⚠️ **no measured accuracy yet** (see section 15) | `frontend/src/components/HeartRateScanner.tsx`, `backend/app/rppg.py` |
+| Facility recommender, Leaflet + OSM | ✅ map, distance, ranked list | `frontend/src/components/CareScreen.tsx`, `backend/app/facilities.py` |
+| PM-JAY eligibility by simple rules | ✅ indicative, "verify at facility" | `backend/app/rules.py` |
+| Cost and wait-time tiers | ✅ cost tier, wait time (simulated, labelled) | `backend/app/data/facilities.json` |
+| Printable PDF summary | ✅ print page → Save as PDF | `frontend/src/components/SummaryScreen.tsx` |
+| SOAP clinician view | ✅ | `backend/app/reports.py`, `DoctorScreen.tsx` |
+| FHIR export (Patient, Observation, RiskAssessment) | ✅; ⚠️ not yet run through the HAPI validator | `backend/app/reports.py` |
+| Fakes clearly labelled "simulated" | ✅ in the app; also say it on the slides | section 14 |
+| "Triage support, not diagnosis" | ✅ every result and the PDF | |
+| Cough audio (listed in `image.png`) | ❌ not built on purpose: the detailed statement says pick rPPG **over** cough | |
+| Blood pressure logs (listed in `image.png`) | ⚠️ BP is entered during the check; no history/trend of past readings | |
 
 ---
 
-## 5. ML models
+## 4. Run it locally
 
-### Core (required by the problem statement)
+### Backend
 
-| # | Model | Detects | Inputs | Output |
-|---|-------|---------|--------|--------|
-| 1 | Hypertension | Risk of high BP | age, sex, BMI, smoking, alcohol, activity, family history, symptoms (headache, dizziness), optional BP | probability, level, top 3 factors |
-| 2 | Cardiovascular | Risk of heart disease | age, sex, BMI, systolic, diastolic, smoking, alcohol, activity, known diabetes, symptoms (chest discomfort, breathlessness) | probability, level, top 3 factors |
-| 3 | Diabetes (type 2) | Risk without lab tests | age, sex, BMI, activity, family history of diabetes, known high BP, symptoms (thirst, frequent urination, blurred vision) | probability, level, top 3 factors |
-
-Dataset candidates (from the PDF): Kaggle Cardiovascular 70k, CDC BRFSS Diabetes Indicators, NHANES / Kaggle hypertension.
-Risk bands: Low < 0.33, Medium 0.33–0.66, High > 0.66 (tune to favour recall for High).
-Hypertension: if the training label is derived from BP, BP must not be an input (label leakage).
-
-### Optional (in the PDF; build only if time allows)
-
-| # | Model | Notes |
-|---|-------|-------|
-| 4 | Maternal risk (UCI dataset) | Pregnancy red flags (rule RF05) are the safety layer anyway |
-| 5 | PPG signal quality | Can start as an SNR threshold instead of ML |
-| 6 | Cough classifier | Problem statement says pick rPPG **over** cough |
-
-### Delivered models (in `models/`, loaded by `backend/app/risk.py`)
-
-| Condition | File | Model | Bands (calibrated) |
-|-----------|------|-------|--------------------|
-| Hypertension | `hypertension/htn_bundle.joblib` | LightGBM + isotonic, no BP input (leakage) | low < 0.20 ≤ medium < 0.45 ≤ high |
-| Diabetes | `diabetes/dm_bundle.joblib` | LightGBM + isotonic | low < 0.10 ≤ medium < 0.25 ≤ high |
-| CVD | `cvd/cvd_nolab_bundle.joblib` | LightGBM + isotonic (Kaggle 70k), **needs BP** | low < 0.30 ≤ medium < 0.60 ≤ high |
-| Maternal | `maternal/maternal_bundle.joblib` | Random Forest, 3-class + high-risk head | high if p_high ≥ 0.25 |
-
-- Explanations: LightGBM TreeSHAP (`pred_contrib`) and `shap.TreeExplainer` for the Random Forest. A factor is only shown when it is true for the user (no "regular alcohol use" for non-drinkers).
-- Intake fields the models want but we don't ask (waist, sleep, sedentary minutes) are sent as missing; the LightGBM models learned missing values. Maternal fills missing blood sugar / temperature / heart rate with UCI medians.
-- Skipped on purpose: a condition the user already has (known diabetes → no diabetes score), CVD without a BP reading, maternal when not pregnant.
-- Measured BP ≥ 140/90 raises hypertension to at least Medium by rule (`model_version` ends in `+bp-rule`).
-- Loading is restricted to numpy/sklearn/joblib classes (pickles can run code). Requires `scikit-learn==1.9.1`.
-- `smoking_status`: 0 never / 1 former / 2 current (confirmed by Pravesh). The intake only asks yes/no, so smokers are sent as 2.
-- Pregnancy: the CVD card is still shown, with a `note` that it is not validated in pregnancy (the Kaggle data had no pregnant women), and it does not affect triage. The maternal model and rules decide.
-- Still to confirm with Pravesh: alcohol (yes = 104 days/year, 2 drinks/day) and activity (low/moderate/high = 0/150/300 min/week) mappings in `risk.py`.
-
-### Original contract (superseded by the bundles above)
-
-Pravesh delivers `ml/predict.py` plus model files. The backend calls exactly this:
-
-```python
-def predict(condition: str, features: dict) -> dict:
-    # condition: "hypertension" | "diabetes" | "cvd"
-    # features: the common intake keys below (missing keys allowed)
-    return {
-        "probability": 0.58,
-        "model_version": "2026.10.1",
-        "top_factors": [  # top 3 SHAP factors, highest impact first
-            {"feature": "bmi", "impact": 0.14},
-            {"feature": "age", "impact": 0.09},
-            {"feature": "family_history_diabetes", "impact": 0.07},
-        ],
-    }
+```powershell
+cd backend
+python -m venv .venv                                  # once
+.venv\Scripts\python -m pip install -r requirements.txt   # once
+.venv\Scripts\python -m uvicorn app.main:app --port 8001   # http://localhost:8001/docs
 ```
 
-Common intake keys:
-`age, sex, height_cm, weight_kg, smoker, alcohol, activity_level, family_history_diabetes, family_history_cvd, known_diabetes, known_hypertension, systolic, diastolic, symptoms`
+Second terminal, simulated hospital availability (pushes every minute):
 
-`top_factors[].feature` must use the common key names (plus `bmi` and `symptoms`) so the backend can show translated text.
-Optional: `ml/model_cards.json` (list of cards) is served as-is by `GET /models`.
-Pravesh owns preprocessing, feature order, the model choice and SHAP. Each dataset has different columns, so mapping the common keys to each model's columns happens inside `predict()`.
-The backend turns `level` and the plain-language `text` (3 languages) into the response.
-Until `predict.py` exists, the backend returns mock values in the same shape, so the frontend is never blocked.
+```powershell
+cd backend
+$env:API_URL = "http://localhost:8001"; .venv\Scripts\python mock_hospital.py
+```
+
+Tests: `cd backend` then `.venv\Scripts\python -m pytest -q` (8 tests: rules, triage, models, safe loading, rPPG, ranking, API flow).
+
+Why port 8001: on Anish's laptop port 8000 is taken by another project (KisanAI), which an IDE agent keeps restarting. Any free port works; point the frontend at it.
+
+### Frontend
+
+```powershell
+cd frontend
+npm install                     # once
+npm run dev                     # http://localhost:5173
+```
+
+`frontend/.env.local` (not committed) tells the frontend where the backend is:
+
+```
+VITE_BACKEND_URL=http://localhost:8001/api/v1
+```
+
+Open **`http://localhost:5173`**, not `127.0.0.1:5173`: the session cookie is only sent when the page and the API use the same host name.
+
+Without the backend the app still runs: red flags work on the device and results fall back to a rough local estimate with an "offline estimate" banner.
+
+### Environment variables (backend)
+
+| Var | Default | Production |
+|---|---|---|
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | exact frontend URL(s), comma-separated |
+| `SESSION_SECRET` | `dev-only-change-me` | long random string |
+| `COOKIE_SAMESITE` | `lax` | `none` when frontend and backend are on different domains |
+| `COOKIE_SECURE` | off | `1` (required with `none`) |
+| `PARTNER_KEY` | `dev-partner-key` | random string shared with the hospital pusher |
+| `MODEL_DIR` | `<repo>/models` | where the model bundles are |
+| `API_URL` | `http://localhost:8000` | `mock_hospital.py` only |
 
 ---
 
-## 6. Emergency red flags (no ML, deterministic)
+## 5. Architecture and repo layout
 
-Run on every symptom tap and on final submit. Any match means **"Go to emergency now"** plus Call 108 and the nearest emergency facility.
+```
+Phone browser (React + Vite PWA)
+  ├─ intake, symptom icons, voice (Web Speech API)
+  ├─ red-flag engine (offline copy of RF01–RF10)
+  ├─ camera → mean green value per frame (video stays on the phone)
+  ├─ GPS (district list if denied), Leaflet + OpenStreetMap
+  └─ IndexedDB queue for offline assessments
+        │  HTTPS + session cookie
+        ▼
+FastAPI backend (Python 3.12)
+  ├─ rules.py       red flags, triage, PM-JAY
+  ├─ risk.py        4 models + SHAP, safe loading
+  ├─ rppg.py        filter + FFT → BPM + quality
+  ├─ facilities.py  ranking by time to see a doctor, live availability
+  └─ reports.py     SOAP, FHIR R4
+        ▲
+        │  POST /partner/availability (X-Partner-Key)
+mock_hospital.py  (simulated hospital software)
+```
+
+```
+backend/
+  app/main.py          routes, CORS, sessions
+  app/schemas.py       request/response models = the API contract
+  app/rules.py         RF01–RF10, triage, PM-JAY
+  app/risk.py          model loading, feature mapping, SHAP, factor texts (6 languages)
+  app/rppg.py          heart rate from green-channel signal
+  app/facilities.py    ranking + availability store
+  app/reports.py       SOAP + FHIR
+  app/data/facilities.json
+  mock_hospital.py     simulated availability pusher
+  tests/test_core.py
+frontend/src/
+  App.tsx              screens and flow
+  services/api.ts      every backend call + offline fallbacks
+  services/redFlagEngine.ts, rppg.ts (offline fallback), voice.ts, offlineQueue.ts, facilitiesData.ts (offline list)
+  components/          CareScreen, DoctorScreen, SummaryScreen, SchemeScreen, HeartRateScanner, EmergencyAlert
+  i18n/translations.ts all UI text and the symptom catalog
+models/                Pravesh's model bundles (joblib)
+```
+
+Storage: assessments live in backend memory (lost on restart). Add SQLite when assessment history is needed.
+
+---
+
+## 6. Risk models
+
+| Condition | File | Model | Bands (calibrated by Pravesh) |
+|---|---|---|---|
+| Hypertension | `models/hypertension/htn_bundle.joblib` | LightGBM + isotonic calibration. No BP input (avoids label leakage) | low < 0.20 ≤ medium < 0.45 ≤ high |
+| Diabetes | `models/diabetes/dm_bundle.joblib` | LightGBM + isotonic | low < 0.10 ≤ medium < 0.25 ≤ high |
+| CVD | `models/cvd/cvd_nolab_bundle.joblib` | LightGBM + isotonic (Kaggle 70k). Needs BP | low < 0.30 ≤ medium < 0.60 ≤ high |
+| Maternal | `models/maternal/maternal_bundle.joblib` | Random Forest, 3-class + separate high-risk model | High if p(high) ≥ 0.25, else the 3-class winner |
+
+Not used: `cvd_lab_bundle` (needs cholesterol and glucose), `dm_bundle_nofh`, `htn_model.txt` (same model as the bundle). Hypertension AUC: 0.84 internal, 0.82 external (`models/hypertension/metrics.json`). Other metrics still to come from Pravesh.
+
+### How the backend uses them (`backend/app/risk.py`)
+
+- **Explanations:** LightGBM's built-in TreeSHAP (`pred_contrib=True`); `shap.TreeExplainer` for the Random Forest. Model features are grouped into intake terms (waist and BMI → "weight"), top 3 positive ones are shown.
+- **A reason is only shown when it is true for the user.** SHAP can push risk up for a "safe" value (non-drinkers in NHANES); we never tell a non-drinker "regular alcohol use".
+- **Values we don't ask** (waist, sleep, sedentary minutes) are sent as missing; the LightGBM models learned missing values. Maternal fills missing blood sugar / temperature / heart rate with UCI medians (7.5 mmol/L, 98 °F, 76 bpm). Missing values are never used as reasons.
+- **Mappings:** smoking yes → `smoking_status` 2 (0 never, 1 former, 2 current, confirmed by Pravesh). Alcohol yes → 104 days/year, 2 drinks/day. Activity low/moderate/high → 0/150/300 min/week; CVD `active` = not low. Blood sugar mg/dL → mmol/L, °C → °F for the maternal model.
+- **Skipped on purpose:** a condition already diagnosed (known diabetes → no diabetes card), CVD without a BP reading (the model never saw missing BP), maternal when not pregnant. So `results` has 2–4 cards.
+- **BP rule:** measured BP ≥ 140/90 lifts hypertension to at least Medium and puts BP first in the reasons (`model_version` ends with `+bp-rule`).
+- **Pregnancy:** the CVD card is still shown, with a translated `note` ("not validated in pregnancy"), and it does not affect triage. The Kaggle CVD data had no pregnant women.
+- **Safe loading:** pickles can run code, so loading only allows numpy / sklearn / joblib classes (a test proves a malicious pickle is blocked). Needs `scikit-learn==1.9.1`, the version the models were trained with.
+- **Version string:** `<file>-<sha1 prefix>`, shown on every card.
+
+---
+
+## 7. Red flags and triage
+
+Red flags run on the device on every step (works offline) and again on the server in `/assess`. Same rules both sides.
 
 | ID | Rule |
-|----|------|
-| RF01 | Chest pain/pressure with sweating, nausea, arm/jaw pain or breathlessness |
+|---|---|
+| RF01 | Chest pain with sweating, nausea, arm/jaw pain or breathlessness |
 | RF02 | Systolic ≥ 180 or diastolic ≥ 120 |
-| RF03 | Stroke signs: one-side weakness, face drooping, slurred speech, sudden vision loss |
-| RF04 | Severe breathlessness at rest |
-| RF05 | Pregnancy with bleeding, severe headache + blurred vision, convulsions, reduced baby movement, or BP ≥ 160/110 |
-| RF06 | Fainting / loss of consciousness |
-| RF07 | Diabetic with confusion, extreme drowsiness, fruity breath or persistent vomiting |
-| RF08 | Heart rate > 150 or < 40 at rest with symptoms (only if signal quality is good) |
+| RF03 | One-side weakness, face drooping, slurred speech or sudden vision loss |
+| RF04 | Breathless at rest |
+| RF05 | Pregnant with bleeding, severe headache + blurred vision, convulsions, reduced baby movement, or BP ≥ 160/110 |
+| RF06 | Fainting |
+| RF07 | Known diabetic with any of: confusion, extreme drowsiness, fruity breath, persistent vomiting |
+| RF08 | Heart rate > 150 or < 40 with any symptom, only if signal quality is good |
 | RF09 | Coughing blood |
-| RF10 | Seizure |
+| RF10 | Seizure or convulsions |
 
-Every rule gets a unit test, including boundary values (179 vs 180, etc.).
-
-Symptom codes shared by frontend and backend: [frontend.md](frontend.md) section 4. Use those exact strings.
-Input ranges (validated on both sides): age 1–120, height 50–250 cm, weight 2–300 kg, systolic 60–260, diastolic 30–160.
-
-### Triage logic (first match wins)
+Triage (first match wins, `rules.triage`):
 
 1. Any red flag → **Emergency**
-2. Any condition High + a relevant symptom, or BP ≥ 160/100 → **Urgent** (see a doctor within 24 h)
-3. Any condition Medium or High → **Routine** (visit a PHC within a week)
-4. Otherwise → **Self-care** (lifestyle guidance + recheck)
+2. BP ≥ 160/100, or pregnant with BP ≥ 140/90, or maternal High, or a High risk plus an acute symptom of that condition → **Urgent** (doctor within 24 h)
+3. Any Medium/High risk, or cough with fever/breathlessness → **Routine** (PHC within a week)
+4. Otherwise → **Self-care**
+
+In pregnancy the CVD card is ignored for triage. Acute symptoms: hypertension — severe headache, blurred vision, chest pain; diabetes — blurred vision, persistent vomiting, extreme drowsiness; CVD — chest pain, breathlessness, arm/jaw pain.
+
+Input ranges (validated in the app and the API): age 1–120, height 50–250 cm, weight 2–300 kg, systolic 60–260, diastolic 30–160, pregnancy 1–42 weeks. Symptom codes: [FRONTEND.md](FRONTEND.md) section 4.
 
 ---
 
-## 7. Sessions (replaces JWT)
+## 8. Camera heart rate (rPPG)
 
-- On app start the frontend calls `POST /api/v1/session`. The backend creates a session and sets a signed cookie (`SessionMiddleware`).
-- All later calls send the cookie automatically. Guest only, no login for the demo.
-- **Gotcha:** if frontend and backend are on different domains (e.g. Vercel + Render), the cookie needs `SameSite=None; Secure`, CORS needs `allow_credentials=True` with the **exact** frontend origin (not `*`), and the frontend must use `fetch(url, { credentials: "include" })`.
-  Simpler alternative: put both behind one domain, or return `session_id` in the body and send it as an `X-Session-Id` header.
+- Phone: front camera, face inside an oval, 25 s. Every frame the app averages the **green** channel of the forehead/cheek area and sends only these numbers (`{fps, green: [...]}`). **The video never leaves the phone.**
+- Server (`rppg.py`): detrend → band-pass 0.7–4 Hz (42–240 bpm) → spectrum peak → BPM. Quality = share of power near the peak: ≥ 0.5 good, ≥ 0.3 marginal, else poor. Too dark (mean < 40) or too much movement (raw std > 8) caps quality.
+- Poor → no BPM, reason (too dark / hold still / face not visible), retry or manual pulse.
+- Offline fallback: a simpler DFT in `frontend/src/services/rppg.ts`.
+- Every reading says "Screening estimate, not a medical device."
+- **Accuracy is not measured yet.** Thresholds are first guesses (calibration knobs at the top of `rppg.py`).
 
 ---
 
-## 8. Facility recommender
+## 9. Facility recommender and live availability
 
-Data: a curated JSON of 30–80 facilities around Nagpur (seeded from OpenStreetMap). Each facility:
+12 facilities around Nagpur in `backend/app/data/facilities.json`: GMCH, Mayo (IGGMC), Daga Women's Hospital, AIIMS, Kamptee SDH, Hingna and Kalmeshwar rural hospitals, Butibori, Mouda and two urban PHCs, and one sample private hospital. **Coordinates are approximate and phone numbers are empty** until verified.
 
-```json
-{
-  "id": "fac_01",
-  "name": "Government Medical College & Hospital, Nagpur",
-  "type": "medical_college",
-  "lat": 21.1356, "lng": 79.0849,
-  "phone": "0712-xxxxxxx",
-  "services": ["emergency", "maternity", "ncd_clinic", "lab"],
-  "emergency_capable": true,
-  "pmjay_empanelled": true,
-  "cost_tier": "free",
-  "open_24x7": true,
-  "rating": 4.1,
-  "review_count": 212,
-  "availability": {
-    "doctors": [{ "specialty": "general", "on_duty": true, "arrives_in_min": 0 },
-                { "specialty": "gynaecology", "on_duty": false, "arrives_in_min": 40 }],
-    "queue_wait_min": 20,
-    "updated_at": "2026-10-22T13:05:00+05:30"
-  },
-  "simulated_fields": ["availability", "rating", "review_count"]
-}
-```
-
-Location: patient GPS (`lat`, `lng`) from the frontend. Distance by Haversine, travel time from distance (assume ~25 km/h in town).
-
-### Ranking: time to see a doctor
-
-A great rating is useless if no doctor is there. Availability is a gate, reviews are only a tie-breaker.
+Ranking by **time to see a doctor**, not just distance:
 
 ```
 time_to_doctor = travel_min + max(0, doctor_arrives_in_min - travel_min) + queue_wait_min
+travel_min     = distance (Haversine) at 25 km/h
 ```
 
-Example: A is 10 min away but the doctor arrives in 60 min (≈ 60 + queue). B is 25 min away with a doctor on duty (≈ 25 + queue). B wins.
+- **Emergency:** only emergency-capable, 24×7 facilities; sorted by `time_to_doctor`; ratings ignored.
+- **Urgent:** CHC / sub-district / district / medical college or PM-JAY empanelled; sorted by `time_to_doctor`.
+- **Pregnant** (`service=maternity`): only facilities with maternity, and the gynaecologist's availability counts.
+- **Routine / Self-care:** `time_to_doctor` + cost penalty (free 0, subsidized 10, paid 25 min) − 5 min per rating point above 3.
+- No data or data older than 30 min → "availability unknown, call before going", ranked by travel + 30 min. Fresh data but no doctor of the needed type → listed last.
+- Call 108 stays on emergency screens whatever the data says.
 
-By triage level:
-- **Emergency:** only `emergency_capable` + `open_24x7` with a doctor on duty. Sort by `time_to_doctor`. Ratings ignored.
-- **Urgent / maternal high risk:** the relevant specialist must be available (maternal → `maternity` service + gynaecology). Sort by `time_to_doctor`.
-- **Routine / Self-care:** weighted score of `time_to_doctor`, cost (free / PM-JAY first), rating.
-
-### Live availability (partner integration)
-
-- Hospital software (HMIS) pushes doctor roster and queue to `POST /api/v1/partner/availability`.
-- Modelled on FHIR `PractitionerRole.availableTime`, `Schedule` and `Slot`, so any FHIR-capable HMIS can plug in. (No public Indian HMIS API exists for this today; ABDM HFR/HPR registries list facilities and doctors but not live duty rosters.)
-- Demo: a small mock "hospital server" script pushes changing data every minute, labelled **simulated**.
-- Stale data: if `updated_at` is older than 30 min, availability counts as unknown ("call before going") and the facility is ranked by travel time + an assumed 30 min wait. Fresh data with no doctor of the needed specialty → listed last.
-- Emergency screens always keep **Call 108**, whatever the availability data says.
-
-PM-JAY eligibility: a short rule-based questionnaire (ration card, SECC deprivation, age 70+) → Likely / Possibly / Not likely, plus documents to carry. Always labelled **"indicative, verify at the facility"**.
-
-**Simulated and labelled as such on screen and on the slides:** wait times, doctor availability, ratings/reviews, appointment booking. Judges punish hidden fakery.
+**Live availability:** hospital software would push its roster and queue to `POST /api/v1/partner/availability` (header `X-Partner-Key`), shaped after FHIR `PractitionerRole` / `Schedule` / `Slot` so any FHIR-capable HMIS could plug in. No public Indian HMIS API offers live duty rosters today (ABDM HFR/HPR list facilities and doctors only). For the demo `mock_hospital.py` pushes random but realistic rosters every minute, keeping each hospital's real specialties.
 
 ---
 
-## 9. API contract (v1)
+## 10. PM-JAY eligibility
 
-Base: `/api/v1`. Live schema and "try it out": `<backend-url>/docs`.
+Four yes/no questions: ration card, BPL/Antyodaya, someone aged 70+, low income.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET  | `/health` | Health check |
-| POST | `/session` | Start a guest session (sets cookie) |
-| POST | `/redflags` | Run RF01–RF10 on the current intake |
-| POST | `/assess` | Full intake → red flags + risks + triage level; saves the assessment |
-| POST | `/vitals/rppg` | Green-channel signal → BPM + quality |
-| GET  | `/facilities/nearby?lat=&lng=&triage_level=&service=` | Facilities ranked by time to see a doctor |
-| POST | `/partner/availability` | Hospital software pushes doctor roster + queue (mock pusher for the demo) |
-| POST | `/schemes/eligibility` | PM-JAY indicative check |
-| GET  | `/assessments/{id}/soap` | SOAP note JSON |
-| GET  | `/assessments/{id}/fhir` | FHIR R4 Bundle (Patient, Observation, RiskAssessment) |
-| GET  | `/models` | Model cards: version, dataset, metrics, limitations |
+- **Likely:** 70+ (Ayushman Vay Vandana, any income) or BPL/Antyodaya.
+- **Possibly:** ration card or low income.
+- **Not likely:** none of these.
 
-PDF summary: rendered by the frontend from the assessment (`window.print()` on a print-styled page). No backend endpoint.
-
-### `POST /redflags`
-
-```json
-// request
-{ "symptoms": ["chest_pain", "sweating"], "systolic": 150, "diastolic": 95,
-  "is_pregnant": false, "heart_rate": null, "heart_rate_quality": null }
-// response
-{ "emergency": true,
-  "rules": [{ "id": "RF01", "message_key": "rf01_chest_pain" }] }
-```
-
-### `POST /assess`
-
-```json
-// request
-{ "language": "mr", "lat": 21.1458, "lng": 79.0882,
-  "features": { "age": 45, "sex": "F", "height_cm": 155, "weight_kg": 72,
-    "smoker": false, "alcohol": false, "activity_level": "low",
-    "family_history_diabetes": true, "family_history_cvd": false,
-    "systolic": 142, "diastolic": 92, "is_pregnant": false,
-    "symptoms": ["headache", "dizziness", "frequent_urination"] },
-  "heart_rate": { "bpm": 78, "quality": "good" } }
-// response
-{ "assessment_id": "a1b2...",
-  "red_flags": [],
-  "triage_level": "routine",
-  "results": [
-    { "condition": "hypertension", "probability": 0.58, "level": "medium",
-      "model_version": "2026.10.1",
-      "top_factors": [
-        { "feature": "systolic", "impact": 0.21, "text": "Your upper BP reading is higher than normal" },
-        { "feature": "bmi", "impact": 0.14, "text": "Weight is higher for your height" },
-        { "feature": "age", "impact": 0.09, "text": "Risk rises with age" } ] } ],
-  "disclaimer": "Screening guidance, not a diagnosis." }
-```
-
-### `POST /vitals/rppg`
-
-Proposal: the frontend does **not** upload video. It records 20–30 s of the face inside an oval guide, takes the mean green value of that region per frame, and sends the numbers. The video never leaves the phone (good privacy point for the slides).
-
-```json
-// request
-{ "fps": 30, "green": [112.4, 112.9, 113.1, "... ~900 values"] }
-// response
-{ "bpm": 78, "quality": "good", "quality_score": 0.91, "reasons": [],
-  "note": "Screening estimate, not a medical device." }
-```
-
-Backend: detrend → bandpass 0.7–4 Hz → FFT peak → BPM. Quality from signal-to-noise ratio. If quality is poor: no BPM, a reason ("too dark", "too much movement"), retry, or manual pulse entry.
-
-### `GET /facilities/nearby`
-
-```json
-[{ "id": "fac_01", "name": "PHC Hingna", "type": "phc",
-   "lat": 21.14, "lng": 79.08, "phone": "0712-xxxxxxx",
-   "distance_km": 2.4, "travel_min": 9,
-   "doctor_available": true, "doctor_arrives_in_min": 0,
-   "queue_wait_min": 15, "time_to_doctor_min": 24,
-   "availability_updated_min_ago": 4,
-   "cost_tier": "free", "pmjay_empanelled": true,
-   "rating": 4.3, "review_count": 88,
-   "simulated_fields": ["doctor_available", "doctor_arrives_in_min", "queue_wait_min", "rating", "review_count"] }]
-```
-
-### `POST /partner/availability`
-
-```json
-{ "facility_id": "fac_01",
-  "doctors": [{ "specialty": "general", "on_duty": true, "arrives_in_min": 0 }],
-  "queue_wait_min": 15,
-  "updated_at": "2026-10-22T13:05:00+05:30" }
-```
-
-### FHIR
-
-Bundle type `collection` with:
-- `Patient`: gender, age, language.
-- `Observation`: BP (LOINC 85354-9, components 8480-6 / 8462-4) and heart rate (LOINC 8867-4, quality in a note).
-- `RiskAssessment`: one per condition, with `qualitativeRisk` and `probabilityDecimal`.
-
-Validate once with the public HAPI FHIR validator before the demo.
+Always shows documents to carry and "Indicative only, verify at the facility." Verify current criteria on pmjay.gov.in before the demo.
 
 ---
 
-## 10. Integration rules
+## 11. Reports: summary, SOAP, FHIR
 
-1. **The contract comes first.** The backend ships every endpoint with mock data on day one; real logic replaces the mocks without changing the shapes.
-2. The frontend generates types from the live schema:
-   `npx openapi-typescript <backend-url>/openapi.json -o src/api.d.ts`
-   A renamed field then fails at compile time instead of during the demo.
-3. **Deploy the backend early on HTTPS.** Phone browsers only allow camera, microphone and GPS on HTTPS, and an HTTPS frontend cannot call an HTTP backend.
-4. Run the full Sunita flow end to end every few hours.
-5. Any change to a request/response shape goes into section 9 of this file first, then into the code.
+- **Patient summary / PDF:** print-styled page in the app; the browser's print gives "Save as PDF".
+- **SOAP** (`GET /assessments/{id}/soap`): Subjective (age, sex, symptoms, history, pregnancy), Objective (BP, BMI, heart rate with quality), Assessment (red flags, each risk with probability and model version, triage), Plan (by triage level).
+- **FHIR R4** (`GET /assessments/{id}/fhir`): Bundle `collection` with Patient (gender, birth year, language), Observation BP (LOINC 85354-9 with 8480-6 / 8462-4), Observation heart rate (LOINC 8867-4, quality note), one RiskAssessment per condition (SNOMED outcome, probability, qualitative risk). Stable ids per assessment.
 
 ---
 
-## 11. Open decisions
+## 12. Sessions
 
-- [x] Platform: **web app first**, native mobile after the web version is complete.
-- [ ] Mobile phase: Capacitor wrapper or native Expo? (decide after web is done)
-- [ ] Final model algorithm and datasets (Pravesh).
-- [ ] Maternal / PPG-quality / cough models: in or out?
-- [ ] Red flags offline? If yes, the frontend needs a JS copy of the RF01–RF10 rules, kept in sync with the backend tests.
-- [ ] Session: cookie (needs same domain or the cross-site settings above) or `X-Session-Id` header?
-- [ ] Who submits on the portal.
+- App start: `POST /session` sets a signed cookie. Guest only, no login.
+- Only `/assess` and `/assessments/*` need it. Red flags, facilities, rPPG and PM-JAY work without a session, so the emergency path never fails on a cookie problem.
+- An assessment can only be read by the session that created it.
+- Frontend: every call uses `credentials: 'include'`; on a 401 it starts a new session and retries once.
+- Deployed on two domains (Vercel + Render): set `COOKIE_SAMESITE=none`, `COOKIE_SECURE=1`, `CORS_ORIGINS=<exact frontend URL>`. Some browsers (Safari, incognito) block such cookies; the fix is to also accept an `X-Session-Id` header (not built yet).
 
 ---
 
-## 12. Running the backend
+## 13. API reference
 
-```bash
-cd backend
-python -m venv .venv && .venv/Scripts/activate      # Linux/Mac: source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload                        # http://localhost:8000/docs
-python mock_hospital.py                              # second terminal: simulated hospital availability
-python -m pytest -q                                  # tests
-```
+Base `/api/v1`. Full examples in [FRONTEND.md](FRONTEND.md) section 5.
 
-Environment variables:
+| Method | Path | Session | Purpose |
+|---|---|---|---|
+| GET | `/health` | | Status and loaded models |
+| POST | `/session` | | Start a guest session |
+| POST | `/redflags` | | RF01–RF10 on the current answers |
+| POST | `/assess` | ✔ | Intake → red flags, risk cards, triage; stores the assessment |
+| GET | `/assessments/{id}` | ✔ | Stored result |
+| GET | `/assessments/{id}/soap` | ✔ | SOAP note |
+| GET | `/assessments/{id}/fhir` | ✔ | FHIR R4 Bundle |
+| POST | `/vitals/rppg` | | `{fps, green[]}` → BPM, quality, reasons |
+| GET | `/facilities/nearby?lat&lng&triage_level&service&limit` | | Ranked facilities |
+| POST | `/partner/availability` | key | Hospital roster + queue |
+| POST | `/schemes/eligibility` | | PM-JAY check |
+| GET | `/models` | | Model versions, bands, features, metrics |
 
-| Var | Default | Production |
-|-----|---------|------------|
-| `CORS_ORIGINS` | `http://localhost:5173` | exact frontend URL(s), comma-separated |
-| `SESSION_SECRET` | `dev-only-change-me` | long random string |
-| `COOKIE_SAMESITE` | `lax` | `none` if frontend and backend are on different domains |
-| `COOKIE_SECURE` | off | `1` (required with `none`) |
-| `PARTNER_KEY` | `dev-partner-key` | random string, shared with the hospital pusher |
-| `API_URL` | `http://localhost:8000` | used by `mock_hospital.py` only |
+`language` accepts `en, hi, mr, gu, te, kn`. `sex` accepts `M, F, O` (or `other`). Extra fields the frontend sends (gravida, symptom duration) are ignored.
 
-Layout: `app/main.py` (routes), `schemas.py` (contract), `rules.py` (red flags, triage, PM-JAY), `risk.py` (Pravesh hook + mock), `facilities.py` + `data/facilities.json`, `rppg.py`, `reports.py` (SOAP, FHIR). Tests: `tests/test_core.py`.
+---
 
-Facility data: names are real public facilities around Nagpur, but coordinates are approximate and phone numbers are empty. Verify against OpenStreetMap before the demo. Availability, ratings and reviews are simulated.
+## 14. What is simulated
 
-## 13. Build order (backend)
+Say this on screen (already done) and on the slides:
 
-Done: 1–10 below (mock risk scores until `ml/predict.py` lands). Next: deploy, real models, HAPI FHIR validation, real facility coordinates.
+- Doctor availability, arrival times and queue waits (mock hospital pusher)
+- Facility ratings and review counts
+- Cost tiers are curated, not from an official source
+- PM-JAY eligibility is indicative
+- The sample private hospital is fictional
 
-1. FastAPI skeleton + `/health` + mock endpoints, deployed → link to Nidhi
-2. Red-flag engine + tests
-3. Triage logic + tests
-4. Facilities JSON + Haversine + `time_to_doctor` ranking
-5. `/partner/availability` + mock hospital pusher script + stale-data rule
-6. Session middleware
-7. `/assess` wired to `predict()` (mock until Pravesh delivers)
-8. rPPG signal → BPM
-9. SOAP + FHIR builders
-10. PM-JAY eligibility, `/models` cards
+Real: red-flag rules, the four trained models and their SHAP reasons, rPPG signal processing, distances, SOAP and FHIR.
+
+---
+
+## 15. Before the demo (to do)
+
+| # | Task | Owner |
+|---|---|---|
+| 1 | Deploy backend (Render/Railway) and frontend (Vercel) on HTTPS: phones only allow camera and GPS on HTTPS | Anish + Nidhi |
+| 2 | Accept `X-Session-Id` header so cross-domain cookies can't break `/assess` | Anish |
+| 3 | rPPG accuracy: 10+ people, phone vs pulse oximeter, different lighting → mean error; tune `rppg.py` thresholds | Team |
+| 4 | Verify facility coordinates on OpenStreetMap; add phone numbers from official sources only | Anish |
+| 5 | Run one FHIR export through the HAPI validator | Anish |
+| 6 | Metrics (AUC, recall for High, dataset) for diabetes, CVD, maternal → `metrics.json` next to each bundle | Pravesh |
+| 7 | Confirm alcohol and activity mappings (section 6) | Pravesh |
+| 8 | Native speaker check of Gujarati / Telugu / Kannada reason texts | Nidhi |
+| 9 | Verify PM-JAY criteria on pmjay.gov.in | Anish |
+| 10 | Decide who submits on the portal | Team |
+
+Nice to have: BP history/trend, assessment history (SQLite), model transparency screen fed by `/models`.
+
+---
+
+## 16. Decision log
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-22 | Web app (React + Vite PWA) first, native mobile later | Camera pixels and speech are easy in the browser; judges only need a link; problem statement asks for a web app |
+| 2026-10-22 | Python FastAPI backend | Models and SHAP are Python; NumPy/SciPy for rPPG; auto docs |
+| 2026-10-22 | Sessions instead of JWT | Team decision; guest-only demo |
+| 2026-10-22 | Patient location by GPS, district list fallback | |
+| 2026-10-22 | XGBoost dropped; Pravesh delivered LightGBM + Random Forest | Same tree-model family, native SHAP |
+| 2026-10-22 | Rank facilities by time to see a doctor; availability via partner push | A good rating is useless if no doctor is there |
+| 2026-10-22 | rPPG sends green-channel numbers, not video | Smaller upload, no video processing on server, privacy |
+| 2026-10-22 | No cough model | Problem statement: pick rPPG over cough |
+| 2026-10-22 | Pregnancy: show CVD with a caveat, ignore it for triage | Not validated in pregnancy, but hiding it was not wanted |
+| 2026-10-22 | `smoking_status` 0 never / 1 former / 2 current | Confirmed by Pravesh |
+
+---
+
+## 17. Gotchas
+
+- **`localhost` vs `127.0.0.1`:** open the frontend on the same host name as the API, or the session cookie is not sent.
+- **Port 8000** on Anish's laptop belongs to KisanAI (restarted by an IDE agent). Use 8001.
+- **`uvicorn --reload` on Windows** sometimes leaves an old worker on the port that keeps serving old code. Restart without `--reload` if responses look stale.
+- **`scikit-learn` must stay 1.9.1**, or the model files may not load.
+- **HTTPS** is required on phones for camera, microphone and GPS, and an HTTPS page cannot call an HTTP API.
+- **Antivirus/proxy SSL:** Python downloads failed with "unable to get local issuer certificate"; `truststore` (uses the Windows certificate store) fixed it. Don't turn certificate checks off.
+- Assessments are in memory: restarting the backend forgets them (SOAP/FHIR for old ids → 404, the app falls back to its local version).
+
+---
+
+## 18. Slide notes
+
+- "Triage support, not diagnosis" on the first and last slide.
+- Models: LightGBM (gradient-boosted trees, same family as XGBoost) for three chronic risks, Random Forest for maternal; calibrated; per-patient SHAP. Show the metrics table once Pravesh sends it.
+- Safety: emergency rules are deterministic and run offline; ML never decides an emergency; the maternal model is backed by pregnancy rules.
+- rPPG: "video never leaves the phone"; show the measured error vs pulse oximeter and the failure cases. Don't claim accuracy we have not measured.
+- Facilities: "time to see a doctor" ranking; availability is simulated through a FHIR-shaped partner API.
+- Honest limits: datasets are not Indian-rural (NHANES, Kaggle, UCI); CVD not validated in pregnancy; simulated data listed in section 14; no cough model by choice.
