@@ -1,0 +1,279 @@
+/* Swasthik Design System & Styling */
+:root {
+  --bg-primary: #0A0F1D;
+  --bg-surface: #111827;
+  --bg-card: rgba(23, 32, 51, 0.75);
+  --bg-card-hover: rgba(30, 41, 67, 0.9);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(14, 165, 233, 0.4);
+  
+  --primary: #0284C7;
+  --primary-light: #38BDF8;
+  --primary-gradient: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+  --accent-glow: rgba(56, 189, 248, 0.15);
+
+  --triage-emergency: #DC2626;
+  --triage-emergency-bg: rgba(220, 38, 38, 0.15);
+  --triage-urgent: #EA580C;
+  --triage-urgent-bg: rgba(234, 88, 12, 0.15);
+  --triage-routine: #D97706;
+  --triage-routine-bg: rgba(217, 119, 6, 0.15);
+  --triage-selfcare: #059669;
+  --triage-selfcare-bg: rgba(5, 150, 105, 0.15);
+
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+  
+  --shadow-card: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --shadow-btn: 0 4px 14px 0 rgba(2, 132, 199, 0.39);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 15% 15%, rgba(2, 132, 199, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(99, 102, 241, 0.08) 0%, transparent 45%);
+}
+
+#root {
+  width: 100%;
+  max-width: 540px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--bg-primary);
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+}
+
+h1, h2, h3, h4, .brand-font {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Glassmorphism Card Base */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  transition: all 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: var(--border-active);
+}
+
+/* Touch Targets: min 48px */
+button, .touch-target {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: none;
+  transition: transform 0.15s ease, opacity 0.15s ease, background-color 0.2s ease;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* Primary Button */
+.btn-primary {
+  background: var(--primary-gradient);
+  color: #FFFFFF;
+  padding: 14px 20px;
+  font-size: 16px;
+  box-shadow: var(--shadow-btn);
+  width: 100%;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  padding: 12px 18px;
+  font-size: 15px;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Emergency Call 108 Button */
+.btn-emergency {
+  background: linear-gradient(135deg, #DC2626 0%, #991B1B 100%);
+  color: #FFFFFF;
+  box-shadow: 0 4px 20px rgba(220, 38, 38, 0.5);
+  animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+  70% { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* Interactive Option Card */
+.option-card {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  min-height: 58px;
+}
+
+.option-card.selected {
+  border-color: var(--primary-light);
+  background: rgba(2, 132, 199, 0.16);
+}
+
+/* Symptom Grid */
+.symptom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.symptom-card {
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  min-height: 90px;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.symptom-card.selected {
+  border-color: #38BDF8;
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.symptom-card.is-red-flag {
+  position: relative;
+}
+
+.symptom-card.is-red-flag.selected {
+  border-color: #EF4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Triage Badges */
+.badge-emergency {
+  background: var(--triage-emergency-bg);
+  color: #F87171;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.badge-urgent {
+  background: var(--triage-urgent-bg);
+  color: #FB923C;
+  border: 1px solid rgba(234, 88, 12, 0.3);
+}
+
+.badge-routine {
+  background: var(--triage-routine-bg);
+  color: #FBBF24;
+  border: 1px solid rgba(217, 119, 6, 0.3);
+}
+
+.badge-selfcare {
+  background: var(--triage-selfcare-bg);
+  color: #34D399;
+  border: 1px solid rgba(5, 150, 105, 0.3);
+}
+
+/* Simulated Tag */
+.simulated-pill {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(148, 163, 184, 0.15);
+  color: #94A3B8;
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+/* Audio & Speaker Buttons */
+.speaker-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.speaker-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Print CSS */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+  #root {
+    max-width: 100% !important;
+    box-shadow: none !important;
+    background: #FFFFFF !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .glass-card {
+    border: 1px solid #CCCCCC !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+}
