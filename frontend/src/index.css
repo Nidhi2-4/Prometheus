@@ -153,6 +153,67 @@ pre.json { background: var(--ink); color: var(--paper); border: 1px solid var(--
 .summary-table th, .summary-table td { text-align: left; vertical-align: top; padding: 8px 4px; border-bottom: 1px solid var(--border); }
 .summary-table th { width: 38%; color: var(--muted); font-weight: 600; }
 
+/* Summary report brand header (visible on screen and in print) */
+.summary-brand-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.summary-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.summary-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
+.summary-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+.summary-app-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.2;
+  margin: 0;
+}
+.summary-app-tagline {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  opacity: 0.85;
+}
+.summary-title-badge h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  text-align: right;
+}
+
+@media (max-width: 600px) {
+  .summary-brand-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .summary-title-badge h1 {
+    text-align: left;
+    font-size: 18px;
+  }
+}
+
 @media (min-width: 900px) {
   h1 { font-size: 28px; }
   main { padding: 32px 24px; gap: 20px; }
@@ -163,8 +224,27 @@ pre.json { background: var(--ink); color: var(--paper); border: 1px solid var(--
 
 @media print {
   @page { size: A4; margin: 16mm; }
-  body { background: #fff; color: #000; }
+  body { background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .no-print, .header { display: none !important; }
   .card { border: 0; padding: 0; }
   main, main.wide { max-width: none; padding: 0; }
+  .summary-brand-header {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    border-bottom: 2px solid #ccc !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 12px !important;
+  }
+  .summary-logo {
+    width: 44px !important;
+    height: 44px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .summary-app-title { font-size: 22px !important; color: #000 !important; font-weight: 800 !important; }
+  .summary-app-tagline { font-size: 12px !important; color: #555 !important; }
+  .summary-title-badge h1 { font-size: 18px !important; color: #111 !important; text-align: right !important; }
+  .summary-table th, .summary-table td { border-bottom: 1px solid #ddd; }
 }

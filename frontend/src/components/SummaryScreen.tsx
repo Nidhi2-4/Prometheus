@@ -19,7 +19,18 @@ export function SummaryScreen({ lang, f, hr, assessment, facility }: {
 
   return (
     <section className="card">
-      <h1>{t.summary_title}</h1>
+      <div className="summary-brand-header">
+        <div className="summary-brand">
+          <img src="/favicon.png" alt="Swasthik Logo" className="summary-logo" />
+          <div className="summary-brand-text">
+            <h2 className="summary-app-title">{t.app_name}</h2>
+            <p className="summary-app-tagline">{t.tagline}</p>
+          </div>
+        </div>
+        <div className="summary-title-badge">
+          <h1>{t.summary_title}</h1>
+        </div>
+      </div>
       <table className="summary-table">
         <tbody>
           <tr><th>{t.s_date}</th><td>{new Date().toLocaleDateString('en-IN')}</td></tr>

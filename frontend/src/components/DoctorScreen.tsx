@@ -28,7 +28,18 @@ export function DoctorScreen({ f, hr, assessment }: { f: PatientFeatures; hr: He
   return (
     <div className="grid">
       <section className="card">
-        <h1>SOAP note</h1>
+        <div className="summary-brand-header">
+          <div className="summary-brand">
+            <img src="/favicon.png" alt="Swasthik Logo" className="summary-logo" />
+            <div className="summary-brand-text">
+              <h2 className="summary-app-title">Swasthik</h2>
+              <p className="summary-app-tagline">Clinical Triage &amp; Assessment Note</p>
+            </div>
+          </div>
+          <div className="summary-title-badge">
+            <h1>SOAP Note</h1>
+          </div>
+        </div>
         {!soap ? <p>Loading...</p> : (
           <>
             <div><h3>Subjective</h3><p>{soap.subjective}</p></div>

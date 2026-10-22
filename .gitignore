@@ -14,6 +14,8 @@ Thumbs.db
 # Environment & Secret files
 .env
 .env.*
+env.local
+*.local
 !.env.example
 *.pem
 *.key
