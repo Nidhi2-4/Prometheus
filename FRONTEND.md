@@ -1,6 +1,6 @@
 # Swastik — Frontend Guide
 
-Everything the frontend needs: what we are building, the screens, the API, and the tricky parts (camera heart rate, voice, GPS, sessions).  
+Everything the frontend needs: what we are building, the screens, the API, and the tricky parts (camera heart rate, voice, GPS, sessions).
 Backend owner: Anish. ML: Pravesh. Overall project info: [info.md](info.md). Full original spec: `docs/Documentation - Health Risk Detection.pdf`.
 
 > Rule for every result screen and the PDF: **"Screening guidance, not a diagnosis."**
@@ -100,7 +100,7 @@ Use these exact codes in API calls. Labels/icons are yours.
 | `excessive_thirst` | `frequent_urination` | `fatigue` |
 | `swelling` | `vaginal_bleeding` | `reduced_baby_movement` |
 | `convulsions` | `confusion` | `extreme_drowsiness` |
-| `fruity_breath` | `persistent_vomiting` | |
+| `fruity_breath` | `persistent_vomiting` | `sudden_vision_loss` |
 
 Pregnancy-only symptoms (`vaginal_bleeding`, `reduced_baby_movement`, `convulsions`) show only if the user said pregnant.
 
@@ -134,6 +134,7 @@ fetch(`${API}/assess`, {
 ```
 
 - If cookies give trouble across domains, we switch to an `X-Session-Id` header. Tell Anish.
+- Only `/assess` and `/assessments/*` need the session (401 without it). `/redflags`, `/facilities/nearby`, `/vitals/rppg` and `/schemes/eligibility` work without one, so the emergency path never breaks on a cookie problem.
 
 ### Endpoints
 
@@ -154,7 +155,7 @@ fetch(`${API}/assess`, {
 ```json
 // request
 { "symptoms": ["chest_pain", "sweating"], "systolic": null, "diastolic": null,
-  "is_pregnant": false, "heart_rate": null, "heart_rate_quality": null }
+  "is_pregnant": false, "known_diabetes": false, "heart_rate": null, "heart_rate_quality": null }
 
 // response
 { "emergency": true,
@@ -203,7 +204,10 @@ If `emergency: true` → open the **Emergency Alert** right away:
 - `triage_level`: `emergency | urgent | routine | self_care`
 - `level`: `low | medium | high`
 - `text` comes back already translated into `language`.
-- Optional fields (`systolic`, `heart_rate`, …) can be `null` if the user skipped them.
+- Optional fields (`systolic`, `heart_rate`, `blood_sugar_mgdl`, `body_temp_c`, …) can be `null` if the user skipped them.
+- `results` has **2 to 4 items**, render whatever comes back. A condition is left out when it does not apply: already diagnosed (known diabetes → no diabetes card), no BP reading (no CVD card), not pregnant (no maternal card).
+- Pregnant users get a `maternal` result with `class_probabilities: {"low", "mid", "high"}`. Optional maternal inputs: `blood_sugar_mgdl`, `body_temp_c`.
+- `top_factors` can have fewer than 3 items (only reasons that are true for this user are shown). `impact: 0` means a rule, not the model (e.g. measured BP ≥ 140/90).
 
 Risk card: condition name, level badge, a simple bar for probability, the 3 `text` reasons, model version, and a "How was this calculated?" link to `/models`.
 
@@ -233,7 +237,11 @@ Facility card shows, in this priority:
 5. Rating ★ 4.3 (88).
 6. Buttons: **Call** (`tel:`), **Directions** (`https://www.google.com/maps/dir/?api=1&destination=LAT,LNG`).
 
-If `availability_updated_min_ago` > 30 → show "Availability unknown, call before going" instead of the doctor status.
+Doctor status from the fields:
+- `doctor_available: true` → "Doctor available now"
+- `doctor_available: false` + `doctor_arrives_in_min` → "Doctor in 40 min"
+- `doctor_available: false` + no `time_to_doctor_min` → "No suitable doctor reported" (still show Call)
+- `doctor_available: null` → "Availability unknown, call before going" (no data, or older than 30 min)
 Show the "simulated" tag next to every field listed in `simulated_fields`.
 
 Map: user marker + facility markers, tap a marker → same card.
@@ -261,7 +269,18 @@ See section 6.
 
 #### PM-JAY eligibility
 
-`POST /schemes/eligibility` with the questionnaire answers (fields in `/docs`). Response: `likely | possibly | not_likely` + documents to carry. Always show **"Indicative, verify at the facility."**
+```json
+// request: 4 simple questions
+{ "age": 72, "has_pmjay_card": false, "secc_listed": false, "ration_card": "phh" }
+// ration_card: "none" | "aay" (Antyodaya) | "phh" (priority household) | "apl"
+
+// response
+{ "result": "likely", "reasons": ["Age 70 or above (Ayushman Vay Vandana, any income)"],
+  "documents": ["Aadhaar card", "Ration card (if any)", "Ayushman / PM-JAY card (if any)", "Mobile number linked to Aadhaar"],
+  "note": "Indicative only, verify at the facility." }
+```
+
+`result`: `likely | possibly | not_likely`. Always show the `note`.
 
 ---
 
