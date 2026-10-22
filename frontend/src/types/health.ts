@@ -1,4 +1,4 @@
-export type Language = 'en' | 'hi' | 'mr';
+export type Language = 'en' | 'hi' | 'mr' | 'gu' | 'te' | 'kn';
 
 export type TriageLevel = 'emergency' | 'urgent' | 'routine' | 'self_care';
 export type RiskLevel = 'low' | 'medium' | 'high';
@@ -36,7 +36,7 @@ export type SymptomCode =
 
 export interface PatientFeatures {
   age: number;
-  sex: 'M' | 'F' | 'O';
+  sex: 'M' | 'F' | 'O' | null;
   height_cm: number;
   weight_kg: number;
   smoker: boolean;

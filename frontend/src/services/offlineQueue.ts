@@ -23,28 +23,12 @@ export async function queueAssessmentOffline(item: QueuedAssessment): Promise<vo
   await set(OFFLINE_QUEUE_KEY, existing);
 }
 
-// Retrieve queued assessments
-export async function getOfflineQueue(): Promise<QueuedAssessment[]> {
-  return (await get(OFFLINE_QUEUE_KEY)) || [];
-}
-
-// Clear or process queued items
-export async function clearOfflineQueue(): Promise<void> {
-  await set(OFFLINE_QUEUE_KEY, []);
-}
-
-// Auto-sync listener on browser reconnect
-export function setupAutoSyncListener(
-  onSyncSuccess?: (syncedCount: number) => void
-) {
-  if (typeof window === 'undefined') return;
-
+// On reconnect, send each queued assessment; keep the ones that still fail.
+export function setupAutoSyncListener(send: (item: QueuedAssessment) => Promise<unknown>) {
   window.addEventListener('online', async () => {
-    const queue = await getOfflineQueue();
-    if (queue.length === 0) return;
-
-    console.info(`Network restored: syncing ${queue.length} offline health assessments to server.`);
-    await clearOfflineQueue();
-    if (onSyncSuccess) onSyncSuccess(queue.length);
+    const queue: QueuedAssessment[] = (await get(OFFLINE_QUEUE_KEY)) || [];
+    const failed: QueuedAssessment[] = [];
+    for (const item of queue) await send(item).catch(() => failed.push(item));
+    await set(OFFLINE_QUEUE_KEY, failed);
   });
 }

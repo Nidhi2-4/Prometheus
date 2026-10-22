@@ -8,7 +8,7 @@ export function speakDeviceText(text: string, lang: Language) {
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
-  const targetLocale = lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN';
+  const targetLocale = `${lang}-IN`;
   utterance.lang = targetLocale;
   utterance.rate = 0.95;
 
@@ -19,6 +19,12 @@ export function speakDeviceText(text: string, lang: Language) {
   }
 
   window.speechSynthesis.speak(utterance);
+}
+
+// Many phones have no Marathi voice; hide the speaker button then.
+export function hasVoice(lang: Language): boolean {
+  if (!('speechSynthesis' in window)) return false;
+  return window.speechSynthesis.getVoices().some((v) => v.lang.startsWith(lang));
 }
 
 // Speech-to-Text (STT)
@@ -38,7 +44,7 @@ export function startDeviceSpeechRecognition(
   const recognition = new (SpeechRec as any)();
   recognition.continuous = false;
   recognition.interimResults = false;
-  recognition.lang = lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN';
+  recognition.lang = `${lang}-IN`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recognition.onresult = (event: any) => {

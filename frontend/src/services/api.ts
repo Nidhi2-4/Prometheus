@@ -5,30 +5,69 @@ import {
   ConditionRisk,
   SOAPNote,
   TriageLevel,
+  Facility,
+  Language,
 } from '../types/health';
 import { evaluateRedFlags } from './redFlagEngine';
+import { TRANSLATIONS } from '../i18n/translations';
+import { getRankedFacilities } from './facilitiesData';
+import { estimateBpm } from './rppg';
 
-// Default backend API URL from environment or local proxy
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api/v1';
 
-// Session initialization
-export async function initializeSession(): Promise<string> {
+// Every call sends the session cookie. Throws when the backend is down so callers can fall back locally.
+async function request<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    credentials: 'include',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+  return res.json();
+}
+
+export async function initializeSession(): Promise<void> {
+  await request('/session', {}).catch(() => console.info('Backend unreachable, running locally'));
+}
+
+export async function checkHeartRate(green: number[], fps: number, brightness: number): Promise<HeartRateResult> {
+  const note = 'Screening estimate, not a medical device.';
   try {
-    const res = await fetch(`${API_BASE_URL}/session`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data.session_id || 'session-active';
-    }
+    return await request<HeartRateResult>('/vitals/rppg', { fps, green });
   } catch {
-    // Graceful offline fallback
-    console.info('Backend unreachable, operating in offline/local session mode');
+    return { ...estimateBpm(green, fps, brightness), note };
   }
-  const localSession = 'session-local-' + Math.random().toString(36).substring(2, 9);
-  localStorage.setItem('swasthik_session', localSession);
-  return localSession;
+}
+
+export async function fetchFacilities(lat: number, lng: number, triage: TriageLevel, maternity: boolean): Promise<Facility[]> {
+  const q = new URLSearchParams({ lat: String(lat), lng: String(lng), triage_level: triage });
+  if (maternity) q.set('service', 'maternity');
+  try {
+    return await request<Facility[]>(`/facilities/nearby?${q}`);
+  } catch {
+    return getRankedFacilities(triage, maternity);
+  }
+}
+
+export type SchemeStatus = 'likely' | 'possibly' | 'not_likely';
+export interface SchemeAnswers { ration_card: boolean; bpl: boolean; senior_70_plus: boolean; low_income: boolean }
+
+export async function checkScheme(a: SchemeAnswers): Promise<SchemeStatus> {
+  try {
+    return (await request<{ status: SchemeStatus }>('/schemes/eligibility', a)).status;
+  } catch {
+    if (a.bpl || a.ration_card || a.senior_70_plus) return 'likely';
+    return a.low_income ? 'possibly' : 'not_likely';
+  }
+}
+
+export async function fetchSOAP(features: PatientFeatures, assessment: AssessmentResponse, hr: HeartRateResult | null): Promise<SOAPNote> {
+  return request<SOAPNote>(`/assessments/${assessment.assessment_id}/soap`).catch(() => generateSOAPNote(features, assessment, hr));
+}
+
+export async function fetchFHIR(features: PatientFeatures, assessment: AssessmentResponse, hr: HeartRateResult | null): Promise<object> {
+  return request<object>(`/assessments/${assessment.assessment_id}/fhir`).catch(() => generateFHIRBundle(features, assessment, hr));
 }
 
 // Local clinical assessment calculation (reliable demo & offline fallback)
@@ -38,6 +77,7 @@ export function calculateLocalAssessment(
   language: string = 'en'
 ): AssessmentResponse {
   const redFlagCheck = evaluateRedFlags(features, heartRate);
+  const tr = TRANSLATIONS[language as Language] ?? TRANSLATIONS.en;
 
   // 1. BMI calculation
   const heightM = features.height_cm / 100;
@@ -85,29 +125,17 @@ export function calculateLocalAssessment(
         {
           feature: 'systolic',
           impact: 0.24,
-          text: language === 'mr'
-            ? 'वरचा रक्तदाब (BP) सामान्यपेक्षा जास्त आहे'
-            : language === 'hi'
-            ? 'ऊपरी ब्लड प्रेशर सामान्य से अधिक है'
-            : 'Your upper BP reading is higher than normal',
+          text: tr.f_ht_bp,
         },
         {
           feature: 'bmi',
           impact: 0.18,
-          text: language === 'mr'
-            ? 'उंचीच्या तुलनेत वजन (BMI) जास्त आहे'
-            : language === 'hi'
-            ? 'लंबाई के अनुपात में वजन (BMI) अधिक है'
-            : 'Weight is elevated for your height (BMI ' + bmi + ')',
+          text: tr.f_ht_bmi,
         },
         {
           feature: 'age',
           impact: 0.12,
-          text: language === 'mr'
-            ? 'वाढत्या वयामुळे रक्तदाबाचा धोका वाढतो'
-            : language === 'hi'
-            ? 'उम्र बढ़ने के साथ जोखिम बढ़ता है'
-            : 'Age factor naturally increases vascular resistance',
+          text: tr.f_ht_age,
         },
       ],
     },
@@ -120,29 +148,17 @@ export function calculateLocalAssessment(
         {
           feature: 'family_history',
           impact: 0.25,
-          text: language === 'mr'
-            ? 'कुटुंबात मधुमेहाचा इतिहास आहे'
-            : language === 'hi'
-            ? 'परिवार में शुगर/मधुमेह का इतिहास है'
-            : 'Family history of diabetes is a primary metabolic driver',
+          text: tr.f_db_family,
         },
         {
           feature: 'bmi',
           impact: 0.2,
-          text: language === 'mr'
-            ? 'वजनामुळे इन्सुलिनच्या कार्यात अडथळा येतो'
-            : language === 'hi'
-            ? 'वजन के कारण इंसुलिन प्रतिरोध बढ़ता है'
-            : 'Elevated BMI contributes to insulin resistance',
+          text: tr.f_db_bmi,
         },
         {
           feature: 'activity',
           impact: 0.14,
-          text: language === 'mr'
-            ? 'कमी शारीरिक हालचाल'
-            : language === 'hi'
-            ? 'दैनिक शारीरिक गतिविधि कम है'
-            : 'Sedentary activity level slows glucose clearance',
+          text: tr.f_db_activity,
         },
       ],
     },
@@ -155,29 +171,17 @@ export function calculateLocalAssessment(
         {
           feature: 'age_vascular',
           impact: 0.22,
-          text: language === 'mr'
-            ? 'वयोमान आणि रक्तवाहिन्यांचा ताण'
-            : language === 'hi'
-            ? 'आयु और रक्त वाहिकाओं का तनाव'
-            : 'Age and vascular baseline risk',
+          text: tr.f_cvd_age,
         },
         {
           feature: 'lifestyle',
           impact: 0.18,
-          text: language === 'mr'
-            ? 'तंबाखू किंवा बैठी जीवनशैली'
-            : language === 'hi'
-            ? 'तंबाकू अथवा गतिहीन दिनचर्या'
-            : 'Tobacco or sedentary lifestyle markers',
+          text: tr.f_cvd_lifestyle,
         },
         {
           feature: 'blood_pressure',
           impact: 0.15,
-          text: language === 'mr'
-            ? 'रक्तदाब पातळी'
-            : language === 'hi'
-            ? 'ब्लड प्रेशर स्तर'
-            : 'Elevated cardiovascular load from BP trend',
+          text: tr.f_cvd_bp,
         },
       ],
     },
@@ -200,20 +204,12 @@ export function calculateLocalAssessment(
         {
           feature: 'gestational_bp',
           impact: 0.28,
-          text: language === 'mr'
-            ? 'गरोदरपणातील रक्तदाब पातळी'
-            : language === 'hi'
-            ? 'गर्भावस्था में ब्लड प्रेशर स्तर'
-            : 'Elevated BP reading during pregnancy',
+          text: tr.f_mat_bp,
         },
         {
           feature: 'edema',
           impact: 0.22,
-          text: language === 'mr'
-            ? 'पायांवर किंवा चेहऱ्यावर सूज'
-            : language === 'hi'
-            ? 'पैरों या चेहरे पर सूजन'
-            : 'Peripheral edema / swelling reported',
+          text: tr.f_mat_swelling,
         },
       ],
     });
@@ -243,31 +239,23 @@ export function calculateLocalAssessment(
   };
 }
 
-// Submit assessment to backend (with local clinical fallback)
-export async function submitAssessment(
-  payload: {
-    language: string;
-    lat: number;
-    lng: number;
-    features: PatientFeatures;
-    heart_rate?: HeartRateResult | null;
-  }
-): Promise<AssessmentResponse> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/assess`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.warn('Backend API request failed; falling back to local deterministic model engine', err);
-  }
+export interface AssessPayload {
+  language: string;
+  lat: number;
+  lng: number;
+  features: PatientFeatures;
+  heart_rate?: HeartRateResult | null;
+}
 
-  return calculateLocalAssessment(payload.features, payload.heart_rate, payload.language);
+export const postAssessment = (payload: AssessPayload) => request<AssessmentResponse>('/assess', payload);
+
+// Backend first, local rules + scoring when it is unreachable.
+export async function submitAssessment(payload: AssessPayload): Promise<{ result: AssessmentResponse; offline: boolean }> {
+  try {
+    return { result: await postAssessment(payload), offline: false };
+  } catch {
+    return { result: calculateLocalAssessment(payload.features, payload.heart_rate, payload.language), offline: true };
+  }
 }
 
 // Generate Clinician SOAP Note
@@ -281,7 +269,7 @@ export function generateSOAPNote(
 
   const subjective = [
     `Chief Complaints: ${features.symptoms.join(', ') || 'Routine health risk screening'}.`,
-    `Patient Profile: ${features.age}yo ${features.sex === 'F' ? 'Female' : 'Male'}.`,
+    `Patient Profile: ${features.age}yo ${features.sex === 'F' ? 'Female' : features.sex === 'M' ? 'Male' : 'Other'}.`,
     features.is_pregnant ? `Obstetric History: Pregnant (~${features.pregnancy_weeks || 'unknown'} weeks). Gravida: ${features.gravida || 1}. Prior complications: ${features.previous_complications ? 'Yes' : 'No'}.` : null,
     `Lifestyle: Smoker: ${features.smoker ? 'Yes' : 'No'}, Alcohol: ${features.alcohol ? 'Yes' : 'No'}, Activity: ${features.activity_level}.`,
     `Family History: Diabetes: ${features.family_history_diabetes ? 'Yes' : 'No'}, CVD: ${features.family_history_cvd ? 'Yes' : 'No'}.`,
@@ -295,7 +283,7 @@ export function generateSOAPNote(
 
   const assessmentText = [
     `Triage Level: ${assessment.triage_level.toUpperCase()}.`,
-    assessment.red_flags.length > 0 ? `Active Red Flags: ${assessment.red_flags.map((r) => r.name).join('; ')}.` : 'No acute emergency red flags triggered.',
+    assessment.red_flags.length > 0 ? `Active Red Flags: ${assessment.red_flags.map((r) => r.name || r.id).join('; ')}.` : 'No acute emergency red flags triggered.',
     `Stratified Chronic Risk: ` + assessment.results.map((r) => `${r.condition.toUpperCase()} (${r.level}, prob ${(r.probability * 100).toFixed(0)}%)`).join(', ') + '.',
   ].join(' ');
 
@@ -336,7 +324,7 @@ export function generateFHIRBundle(
         resource: {
           resourceType: 'Patient',
           id: patientId,
-          gender: features.sex === 'F' ? 'female' : 'male',
+          gender: features.sex === 'F' ? 'female' : features.sex === 'M' ? 'male' : 'other',
           birthDate: new Date(new Date().getFullYear() - features.age, 0, 1).toISOString().split('T')[0],
           extension: [
             {

@@ -10,11 +10,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png'],
       manifest: {
-        name: 'Swastik — AI Health Triage',
-        short_name: 'Swastik',
-        description: 'AI-Powered Preventive Health Risk Detection & Healthcare Access Navigation',
-        theme_color: '#0A0F1D',
-        background_color: '#0A0F1D',
+        name: 'Swasthik',
+        short_name: 'Swasthik',
+        description: 'Health risk screening and nearby care',
+        theme_color: '#2F404F',
+        background_color: '#F0F1EE',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
