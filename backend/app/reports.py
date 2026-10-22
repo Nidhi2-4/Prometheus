@@ -39,7 +39,7 @@ def soap(inp: AssessIn, out: AssessOut) -> SoapOut:
     flags = ", ".join(r.id for r in out.red_flags) or "none"
     risks = "; ".join(f"{LABEL[r.condition]} {r.level} ({r.probability:.2f}, model {r.model_version})" for r in out.results)
     return SoapOut(
-        subjective=f"{f.age} y, {f.sex}. Symptoms: {_words(f.symptoms) or 'none reported'}. "
+        subjective=f"{f.name + ', ' if getattr(f, 'name', None) else ''}{f.age} y, {f.sex}. Symptoms: {_words(f.symptoms) or 'none reported'}. "
                    f"History: {', '.join(history) or 'none reported'}. Activity: {f.activity_level}.{pregnancy}",
         objective=". ".join(vitals) + ".",
         assessment=f"Red flags: {flags}. Risk: {risks}. Triage: {out.triage_level}.",
@@ -68,12 +68,15 @@ def fhir(assessment_id: str, inp: AssessIn, out: AssessOut, created: datetime | 
 
     patient = url("patient")
     subject = {"reference": patient}
-    entries = [(patient, {
+    patient_resource = {
         "resourceType": "Patient",
         "gender": {"M": "male", "F": "female"}.get(f.sex, "other"),
         "birthDate": str(date.today().year - f.age),  # year only: we only know the age
         "communication": [{"language": _coding("urn:ietf:bcp:47", f"{inp.language}-IN")}],
-    })]
+    }
+    if getattr(f, "name", None):
+        patient_resource["name"] = [{"text": f.name}]
+    entries = [(patient, patient_resource)]
     if f.systolic and f.diastolic:
         entries.append((url("bp"), {
             "resourceType": "Observation", "status": "final", "category": [VITAL],

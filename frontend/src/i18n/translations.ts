@@ -67,6 +67,8 @@ const en = {
   home_start: 'Start health check',
 
   basic_title: 'About you',
+  name: 'Name (optional)',
+  name_placeholder: 'e.g. Sunita Devi',
   age: 'Age (years)',
   sex: 'Sex',
   male: 'Male',
@@ -260,6 +262,8 @@ const hi: Strings = {
   home_start: 'जांच शुरू करें',
 
   basic_title: 'आपके बारे में',
+  name: 'नाम (वैकल्पिक)',
+  name_placeholder: 'उदा. सुनीता देवी',
   age: 'उम्र (वर्ष)',
   sex: 'लिंग',
   male: 'पुरुष',
@@ -451,6 +455,8 @@ const mr: Strings = {
   home_start: 'तपासणी सुरू करा',
 
   basic_title: 'तुमच्याबद्दल',
+  name: 'नाव (पर्यायी)',
+  name_placeholder: 'उदा. सुनीता देवी',
   age: 'वय (वर्षे)',
   sex: 'लिंग',
   male: 'पुरुष',
@@ -642,6 +648,8 @@ const gu: Strings = {
   home_start: 'તપાસ શરૂ કરો',
 
   basic_title: 'તમારા વિશે',
+  name: 'નામ (વૈકલ્પિક)',
+  name_placeholder: 'દા.ત. સુનીતા દેવી',
   age: 'ઉંમર (વર્ષ)',
   sex: 'લિંગ',
   male: 'પુરુષ',
@@ -833,6 +841,8 @@ const te: Strings = {
   home_start: 'పరీక్ష ప్రారంభించండి',
 
   basic_title: 'మీ గురించి',
+  name: 'పేరు (ఐచ్ఛికం)',
+  name_placeholder: 'ఉదా. సునీత దేవి',
   age: 'వయస్సు (సంవత్సరాలు)',
   sex: 'లింగం',
   male: 'పురుషుడు',
@@ -1024,6 +1034,8 @@ const kn: Strings = {
   home_start: 'ತಪಾಸಣೆ ಪ್ರಾರಂಭಿಸಿ',
 
   basic_title: 'ನಿಮ್ಮ ಬಗ್ಗೆ',
+  name: 'ಹೆಸರು (ಐಚ್ಛಿಕ)',
+  name_placeholder: 'ಉದಾ. ಸುನೀತಾ ದೇವಿ',
   age: 'ವಯಸ್ಸು (ವರ್ಷ)',
   sex: 'ಲಿಂಗ',
   male: 'ಪುರುಷ',

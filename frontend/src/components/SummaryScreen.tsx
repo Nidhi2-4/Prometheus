@@ -23,7 +23,7 @@ export function SummaryScreen({ lang, f, hr, assessment, facility }: {
       <table className="summary-table">
         <tbody>
           <tr><th>{t.s_date}</th><td>{new Date().toLocaleDateString('en-IN')}</td></tr>
-          <tr><th>{t.s_patient}</th><td>{f.age}, {sex}, {f.height_cm} cm, {f.weight_kg} kg, {t.bmi} {bmi}{f.is_pregnant && `, ${t.preg_title} ${f.pregnancy_weeks}`}</td></tr>
+          <tr><th>{t.s_patient}</th><td>{f.name ? <strong>{f.name}, </strong> : null}{f.age}, {sex}, {f.height_cm} cm, {f.weight_kg} kg, {t.bmi} {bmi}{f.is_pregnant && `, ${t.preg_title} ${f.pregnancy_weeks}`}</td></tr>
           <tr><th>{t.s_symptoms}</th><td>{symptoms.length ? symptoms.join(', ') : t.none}</td></tr>
           <tr><th>{t.s_vitals}</th><td>{bp} / {pulse}</td></tr>
           <tr><th>{t.s_triage}</th><td><strong>{t[`triage_${assessment.triage_level}` as const]}</strong>. {t[`advice_${assessment.triage_level}` as const]}</td></tr>

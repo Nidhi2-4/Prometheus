@@ -276,7 +276,7 @@ export function generateSOAPNote(
 
   const subjective = [
     `Chief Complaints: ${features.symptoms.join(', ') || 'Routine health risk screening'}.`,
-    `Patient Profile: ${features.age}yo ${features.sex === 'F' ? 'Female' : features.sex === 'M' ? 'Male' : 'Other'}.`,
+    `Patient Profile: ${features.name ? `${features.name}, ` : ''}${features.age}yo ${features.sex === 'F' ? 'Female' : features.sex === 'M' ? 'Male' : 'Other'}.`,
     features.is_pregnant ? `Obstetric History: Pregnant (~${features.pregnancy_weeks || 'unknown'} weeks). Gravida: ${features.gravida || 1}. Prior complications: ${features.previous_complications ? 'Yes' : 'No'}.` : null,
     `Lifestyle: Smoker: ${features.smoker ? 'Yes' : 'No'}, Alcohol: ${features.alcohol ? 'Yes' : 'No'}, Activity: ${features.activity_level}.`,
     `Family History: Diabetes: ${features.family_history_diabetes ? 'Yes' : 'No'}, CVD: ${features.family_history_cvd ? 'Yes' : 'No'}.`,
@@ -331,6 +331,7 @@ export function generateFHIRBundle(
         resource: {
           resourceType: 'Patient',
           id: patientId,
+          ...(features.name ? { name: [{ text: features.name }] } : {}),
           gender: features.sex === 'F' ? 'female' : features.sex === 'M' ? 'male' : 'other',
           birthDate: new Date(new Date().getFullYear() - features.age, 0, 1).toISOString().split('T')[0],
           extension: [

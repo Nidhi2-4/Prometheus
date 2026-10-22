@@ -97,7 +97,7 @@ main.wide { max-width: 1040px; }
 
 /* Inputs */
 label.field { display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--muted); }
-input[type='number'], select.input {
+input[type='text'], input[type='number'], select.input {
   min-height: 52px; padding: 10px 12px; font: inherit; font-size: 18px; color: var(--text);
   border: 2px solid var(--border); border-radius: 10px; background: var(--surface); width: 100%;
 }

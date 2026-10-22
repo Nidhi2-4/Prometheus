@@ -36,6 +36,7 @@ export type SymptomCode =
   | 'persistent_vomiting';
 
 export interface PatientFeatures {
+  name?: string;
   age: number;
   sex: 'M' | 'F' | 'O' | null;
   height_cm: number;

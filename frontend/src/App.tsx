@@ -23,6 +23,7 @@ type Step =
   | 'result' | 'care' | 'scheme' | 'summary' | 'doctor';
 
 const EMPTY: PatientFeatures = {
+  name: '',
   age: 0, sex: null, height_cm: 0, weight_kg: 0,
   smoker: false, alcohol: false, activity_level: 'moderate',
   known_hypertension: false, known_diabetes: false, known_heart_disease: false,
@@ -228,6 +229,16 @@ export default function App() {
               {step === 'basic' && (
                 <>
                   <Title lang={lang} title={t.basic_title} />
+                  <label className="field">
+                    {t.name}
+                    <input
+                      type="text"
+                      autoComplete="name"
+                      placeholder={t.name_placeholder}
+                      value={f.name || ''}
+                      onChange={(e) => update({ name: e.target.value })}
+                    />
+                  </label>
                   <label className="field">
                     {t.age}
                     <input type="number" inputMode="numeric" value={f.age || ''} onChange={(e) => update({ age: Number(e.target.value) })} />

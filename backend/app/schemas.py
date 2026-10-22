@@ -42,6 +42,7 @@ class RedFlagOut(BaseModel):
 
 
 class Features(BaseModel):
+    name: str | None = None
     age: int = Field(ge=1, le=120)
     sex: Literal["M", "F", "O", "other"]  # "O" and "other" mean the same
     height_cm: float = Field(ge=50, le=250)
