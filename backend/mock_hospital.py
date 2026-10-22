@@ -29,6 +29,11 @@ while True:
                 "updated_at": datetime.now(timezone.utc).isoformat()}
         req = urllib.request.Request(API, data=json.dumps(body).encode(), method="POST",
                                      headers={"Content-Type": "application/json", "X-Partner-Key": KEY})
-        urllib.request.urlopen(req).close()
-    print(f"{datetime.now():%H:%M:%S} pushed availability for {len(FACILITIES)} facilities")
+        try:
+            urllib.request.urlopen(req).close()
+        except OSError as e:  # API down or restarting: keep going, next round retries
+            print(f"{datetime.now():%H:%M:%S} push failed for {f['id']}: {e}")
+            break
+    else:
+        print(f"{datetime.now():%H:%M:%S} pushed availability for {len(FACILITIES)} facilities")
     time.sleep(60)
