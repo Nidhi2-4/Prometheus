@@ -16,13 +16,19 @@ import { estimateBpm } from './rppg';
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/api/v1';
 
 // Every call sends the session cookie. Throws when the backend is down so callers can fall back locally.
+// A 401 means the session is missing (backend was down at app start, or restarted): start one and retry once.
 async function request<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const send = () => fetch(`${API_BASE_URL}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     credentials: 'include',
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  let res = await send();
+  if (res.status === 401 && path !== '/session') {
+    await fetch(`${API_BASE_URL}/session`, { method: 'POST', credentials: 'include' });
+    res = await send();
+  }
   if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
   return res.json();
 }
@@ -55,10 +61,11 @@ export interface SchemeAnswers { ration_card: boolean; bpl: boolean; senior_70_p
 
 export async function checkScheme(a: SchemeAnswers): Promise<SchemeStatus> {
   try {
-    return (await request<{ status: SchemeStatus }>('/schemes/eligibility', a)).status;
+    return (await request<{ result: SchemeStatus }>('/schemes/eligibility', a)).result;
   } catch {
-    if (a.bpl || a.ration_card || a.senior_70_plus) return 'likely';
-    return a.low_income ? 'possibly' : 'not_likely';
+    // Same rules as the backend (rules.pmjay_eligibility).
+    if (a.senior_70_plus || a.bpl) return 'likely';
+    return a.ration_card || a.low_income ? 'possibly' : 'not_likely';
   }
 }
 
@@ -120,7 +127,7 @@ export function calculateLocalAssessment(
       condition: 'hypertension',
       probability: htProb,
       level: htProb > 0.66 ? 'high' : htProb > 0.33 ? 'medium' : 'low',
-      model_version: '2026.10.1',
+      model_version: 'offline-estimate',
       top_factors: [
         {
           feature: 'systolic',
@@ -143,7 +150,7 @@ export function calculateLocalAssessment(
       condition: 'diabetes',
       probability: dbProb,
       level: dbProb > 0.66 ? 'high' : dbProb > 0.33 ? 'medium' : 'low',
-      model_version: '2026.10.1',
+      model_version: 'offline-estimate',
       top_factors: [
         {
           feature: 'family_history',
@@ -166,7 +173,7 @@ export function calculateLocalAssessment(
       condition: 'cvd',
       probability: cvdProb,
       level: cvdProb > 0.66 ? 'high' : cvdProb > 0.33 ? 'medium' : 'low',
-      model_version: '2026.10.1',
+      model_version: 'offline-estimate',
       top_factors: [
         {
           feature: 'age_vascular',
@@ -199,7 +206,7 @@ export function calculateLocalAssessment(
       condition: 'maternal',
       probability: isMaternalHigh ? 0.76 : 0.28,
       level: isMaternalHigh ? 'high' : 'low',
-      model_version: '2026.10.1',
+      model_version: 'offline-estimate',
       top_factors: [
         {
           feature: 'gestational_bp',

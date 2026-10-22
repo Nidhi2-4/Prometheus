@@ -31,7 +31,7 @@ export function evaluateRedFlags(
   }
 
   // RF03: Sudden stroke signs (weakness on one side, face drooping, slurred speech, sudden vision loss)
-  if (s.has('one_side_weakness') || s.has('face_drooping') || s.has('slurred_speech')) {
+  if (s.has('one_side_weakness') || s.has('face_drooping') || s.has('slurred_speech') || s.has('sudden_vision_loss')) {
     triggered.push({
       id: 'RF03',
       message_key: 'rf03_stroke',
@@ -80,10 +80,10 @@ export function evaluateRedFlags(
     });
   }
 
-  // RF07: Diabetic ketoacidosis warning signs
+  // RF07: Diabetic emergency: any one of confusion, drowsiness, fruity breath, vomiting (same as backend)
   if (
     features.known_diabetes &&
-    (s.has('fruity_breath') || s.has('confusion') || (s.has('extreme_drowsiness') && s.has('persistent_vomiting')))
+    (s.has('fruity_breath') || s.has('confusion') || s.has('extreme_drowsiness') || s.has('persistent_vomiting'))
   ) {
     triggered.push({
       id: 'RF07',
@@ -95,7 +95,7 @@ export function evaluateRedFlags(
 
   // RF08: Heart rate > 150 or < 40 with good quality
   if (heartRate && heartRate.quality === 'good' && heartRate.bpm !== null) {
-    if ((heartRate.bpm > 150 || heartRate.bpm < 40) && (s.has('dizziness') || s.has('breathlessness') || s.has('chest_pain'))) {
+    if ((heartRate.bpm > 150 || heartRate.bpm < 40) && s.size > 0) {
       triggered.push({
         id: 'RF08',
         message_key: 'rf08_arrhythmia',

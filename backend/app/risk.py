@@ -177,7 +177,7 @@ def predict(condition: str, f: Features, hr: HeartRate | None, language: str) ->
         class_probabilities=class_probabilities,
         top_factors=[Factor(feature=k, impact=round(v, 2), text=factor_text(k, language)) for k, v in top],
         # CVD data had no pregnant women; pregnancy BP is judged by the maternal model (and rules.triage ignores this card).
-        note=CVD_PREGNANCY_NOTE[("en", "hi", "mr").index(language)] if condition == "cvd" and f.is_pregnant else None,
+        note=CVD_PREGNANCY_NOTE[LANGS.index(language)] if condition == "cvd" and f.is_pregnant else None,
     )
 
 
@@ -185,28 +185,47 @@ CVD_PREGNANCY_NOTE = (
     "Not validated in pregnancy. Your BP is checked by the pregnancy risk model.",
     "गर्भावस्था में यह स्कोर प्रमाणित नहीं है। आपका BP गर्भावस्था जोखिम मॉडल से जाँचा जाता है।",
     "गरोदरपणात हा स्कोअर प्रमाणित नाही. तुमचा BP गरोदरपणाच्या जोखीम मॉडेलद्वारे तपासला जातो.",
+    "ગર્ભાવસ્થામાં આ સ્કોર પ્રમાણિત નથી. તમારું BP ગર્ભાવસ્થા જોખમ મૉડલથી તપાસાય છે.",
+    "గర్భధారణలో ఈ స్కోరు ధృవీకరించబడలేదు. మీ BP గర్భధారణ ప్రమాద మోడల్ ద్వారా తనిఖీ చేయబడుతుంది.",
+    "ಗರ್ಭಾವಸ್ಥೆಯಲ್ಲಿ ಈ ಸ್ಕೋರ್ ದೃಢೀಕರಿಸಲಾಗಿಲ್ಲ. ನಿಮ್ಮ BP ಗರ್ಭಾವಸ್ಥೆಯ ಅಪಾಯ ಮಾದರಿಯಿಂದ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.",
 )
 
 
+LANGS = ("en", "hi", "mr", "gu", "te", "kn")  # order of every text tuple below
 FACTOR_TEXT = {
-    "age": ("Risk rises with age", "उम्र के साथ जोखिम बढ़ता है", "वयानुसार धोका वाढतो"),
-    "sex": ("Risk differs between men and women", "पुरुषों और महिलाओं में जोखिम अलग होता है", "स्त्री आणि पुरुषांमध्ये धोका वेगळा असतो"),
-    "bmi": ("Weight is higher for your height", "आपकी लंबाई के हिसाब से वज़न ज़्यादा है", "तुमच्या उंचीच्या मानाने वजन जास्त आहे"),
-    "systolic": ("Your upper BP reading is higher than normal", "आपका ऊपर वाला BP सामान्य से ज़्यादा है", "तुमचा वरचा BP सामान्यपेक्षा जास्त आहे"),
-    "diastolic": ("Your lower BP reading is higher than normal", "आपका नीचे वाला BP सामान्य से ज़्यादा है", "तुमचा खालचा BP सामान्यपेक्षा जास्त आहे"),
-    "smoker": ("Smoking or tobacco use", "धूम्रपान या तंबाकू का सेवन", "धूम्रपान किंवा तंबाखूचे सेवन"),
-    "alcohol": ("Regular alcohol use", "नियमित शराब का सेवन", "नियमित मद्यपान"),
-    "activity_level": ("Low physical activity", "शारीरिक गतिविधि कम है", "शारीरिक हालचाल कमी आहे"),
-    "family_history_diabetes": ("Diabetes runs in your family", "परिवार में डायबिटीज़ है", "कुटुंबात मधुमेह आहे"),
-    "known_hypertension": ("You already have high BP", "आपको पहले से हाई BP है", "तुम्हाला आधीच उच्च रक्तदाब आहे"),
-    "known_diabetes": ("You already have diabetes", "आपको पहले से डायबिटीज़ है", "तुम्हाला आधीच मधुमेह आहे"),
-    "sleep": ("Your sleep pattern", "आपकी नींद का पैटर्न", "तुमच्या झोपेची पद्धत"),
-    "blood_sugar": ("Blood sugar is higher than expected", "ब्लड शुगर अपेक्षा से ज़्यादा है", "रक्तातील साखर अपेक्षेपेक्षा जास्त आहे"),
-    "body_temp": ("Body temperature is raised", "शरीर का तापमान बढ़ा हुआ है", "शरीराचे तापमान वाढलेले आहे"),
-    "heart_rate": ("Heart rate is outside the usual range", "दिल की धड़कन सामान्य सीमा से बाहर है", "हृदयाचे ठोके नेहमीच्या मर्यादेबाहेर आहेत"),
+    "age": ("Risk rises with age", "उम्र के साथ जोखिम बढ़ता है", "वयानुसार धोका वाढतो",
+            "ઉંમર સાથે જોખમ વધે છે", "వయస్సుతో పాటు ప్రమాదం పెరుగుతుంది", "ವಯಸ್ಸಿನೊಂದಿಗೆ ಅಪಾಯ ಹೆಚ್ಚಾಗುತ್ತದೆ"),
+    "sex": ("Risk differs between men and women", "पुरुषों और महिलाओं में जोखिम अलग होता है", "स्त्री आणि पुरुषांमध्ये धोका वेगळा असतो",
+            "સ્ત્રી અને પુરુષમાં જોખમ અલગ હોય છે", "స్త్రీ, పురుషులలో ప్రమాదం వేరుగా ఉంటుంది", "ಮಹಿಳೆ ಮತ್ತು ಪುರುಷರಲ್ಲಿ ಅಪಾಯ ಬೇರೆ ಬೇರೆಯಾಗಿರುತ್ತದೆ"),
+    "bmi": ("Weight is higher for your height", "आपकी लंबाई के हिसाब से वज़न ज़्यादा है", "तुमच्या उंचीच्या मानाने वजन जास्त आहे",
+            "તમારી ઊંચાઈના પ્રમાણમાં વજન વધારે છે", "మీ ఎత్తుకు తగినదానికంటే బరువు ఎక్కువగా ఉంది", "ನಿಮ್ಮ ಎತ್ತರಕ್ಕೆ ಹೋಲಿಸಿದರೆ ತೂಕ ಹೆಚ್ಚಾಗಿದೆ"),
+    "systolic": ("Your upper BP reading is higher than normal", "आपका ऊपर वाला BP सामान्य से ज़्यादा है", "तुमचा वरचा BP सामान्यपेक्षा जास्त आहे",
+                 "તમારું ઉપરનું BP સામાન્ય કરતાં વધારે છે", "మీ పై BP సాధారణం కంటే ఎక్కువగా ఉంది", "ನಿಮ್ಮ ಮೇಲಿನ BP ಸಾಮಾನ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚಾಗಿದೆ"),
+    "diastolic": ("Your lower BP reading is higher than normal", "आपका नीचे वाला BP सामान्य से ज़्यादा है", "तुमचा खालचा BP सामान्यपेक्षा जास्त आहे",
+                  "તમારું નીચેનું BP સામાન્ય કરતાં વધારે છે", "మీ కింది BP సాధారణం కంటే ఎక్కువగా ఉంది", "ನಿಮ್ಮ ಕೆಳಗಿನ BP ಸಾಮಾನ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚಾಗಿದೆ"),
+    "smoker": ("Smoking or tobacco use", "धूम्रपान या तंबाकू का सेवन", "धूम्रपान किंवा तंबाखूचे सेवन",
+               "ધૂમ્રપાન અથવા તમાકુનું સેવન", "పొగతాగడం లేదా పొగాకు వాడకం", "ಧೂಮಪಾನ ಅಥವಾ ತಂಬಾಕು ಸೇವನೆ"),
+    "alcohol": ("Regular alcohol use", "नियमित शराब का सेवन", "नियमित मद्यपान",
+                "નિયમિત દારૂનું સેવન", "క్రమం తప్పకుండా మద్యం సేవించడం", "ನಿಯಮಿತ ಮದ್ಯಪಾನ"),
+    "activity_level": ("Low physical activity", "शारीरिक गतिविधि कम है", "शारीरिक हालचाल कमी आहे",
+                       "શારીરિક પ્રવૃત્તિ ઓછી છે", "శారీరక శ్రమ తక్కువగా ఉంది", "ದೈಹಿಕ ಚಟುವಟಿಕೆ ಕಡಿಮೆ ಇದೆ"),
+    "family_history_diabetes": ("Diabetes runs in your family", "परिवार में डायबिटीज़ है", "कुटुंबात मधुमेह आहे",
+                                "પરિવારમાં ડાયાબિટીસ છે", "మీ కుటుంబంలో మధుమేహం ఉంది", "ನಿಮ್ಮ ಕುಟುಂಬದಲ್ಲಿ ಮಧುಮೇಹ ಇದೆ"),
+    "known_hypertension": ("You already have high BP", "आपको पहले से हाई BP है", "तुम्हाला आधीच उच्च रक्तदाब आहे",
+                           "તમને પહેલેથી હાઈ BP છે", "మీకు ఇప్పటికే అధిక BP ఉంది", "ನಿಮಗೆ ಈಗಾಗಲೇ ಅಧಿಕ BP ಇದೆ"),
+    "known_diabetes": ("You already have diabetes", "आपको पहले से डायबिटीज़ है", "तुम्हाला आधीच मधुमेह आहे",
+                       "તમને પહેલેથી ડાયાબિટીસ છે", "మీకు ఇప్పటికే మధుమేహం ఉంది", "ನಿಮಗೆ ಈಗಾಗಲೇ ಮಧುಮೇಹ ಇದೆ"),
+    "sleep": ("Your sleep pattern", "आपकी नींद का पैटर्न", "तुमच्या झोपेची पद्धत",
+              "તમારી ઊંઘની રીત", "మీ నిద్ర విధానం", "ನಿಮ್ಮ ನಿದ್ರೆಯ ಕ್ರಮ"),
+    "blood_sugar": ("Blood sugar is higher than expected", "ब्लड शुगर अपेक्षा से ज़्यादा है", "रक्तातील साखर अपेक्षेपेक्षा जास्त आहे",
+                    "બ્લડ શુગર અપેક્ષા કરતાં વધારે છે", "రక్తంలో చక్కెర ఊహించినదానికంటే ఎక్కువగా ఉంది", "ರಕ್ತದ ಸಕ್ಕರೆ ನಿರೀಕ್ಷೆಗಿಂತ ಹೆಚ್ಚಾಗಿದೆ"),
+    "body_temp": ("Body temperature is raised", "शरीर का तापमान बढ़ा हुआ है", "शरीराचे तापमान वाढलेले आहे",
+                  "શરીરનું તાપમાન વધેલું છે", "శరీర ఉష్ణోగ్రత పెరిగింది", "ದೇಹದ ಉಷ್ಣತೆ ಹೆಚ್ಚಾಗಿದೆ"),
+    "heart_rate": ("Heart rate is outside the usual range", "दिल की धड़कन सामान्य सीमा से बाहर है", "हृदयाचे ठोके नेहमीच्या मर्यादेबाहेर आहेत",
+                   "હૃદયના ધબકારા સામાન્ય મર્યાદાની બહાર છે", "గుండె వేగం సాధారణ పరిధికి వెలుపల ఉంది", "ಹೃದಯ ಬಡಿತ ಸಾಮಾನ್ಯ ಮಿತಿಯ ಹೊರಗಿದೆ"),
 }
 
 
 def factor_text(key: str, language: str) -> str:
     texts = FACTOR_TEXT.get(key)
-    return texts[("en", "hi", "mr").index(language)] if texts else key.replace("_", " ")
+    return texts[LANGS.index(language)] if texts else key.replace("_", " ")

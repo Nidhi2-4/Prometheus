@@ -62,20 +62,14 @@ PMJAY_DOCUMENTS = ["Aadhaar card", "Ration card (if any)", "Ayushman / PM-JAY ca
 
 def pmjay_eligibility(e: EligibilityIn) -> EligibilityOut:
     # ponytail: indicative rules only; verify current criteria on pmjay.gov.in before the demo.
-    reasons = []
-    if e.has_pmjay_card:
-        reasons.append("Already has an Ayushman / PM-JAY card")
-    if e.age >= 70:
-        reasons.append("Age 70 or above (Ayushman Vay Vandana, any income)")
-    if e.secc_listed:
-        reasons.append("Family listed in SECC 2011 deprivation data")
-    if e.ration_card == "aay":
-        reasons.append("Antyodaya (AAY) ration card")
-    if reasons:
-        result = "likely"
-    elif e.ration_card == "phh":
-        result, reasons = "possibly", ["Priority household ration card: check at the facility"]
-    else:
-        result = "not_likely"
+    likely = [r for ok, r in [
+        (e.senior_70_plus, "Age 70 or above (Ayushman Vay Vandana, any income)"),
+        (e.bpl, "BPL / Antyodaya household"),
+    ] if ok]
+    possibly = [r for ok, r in [
+        (e.ration_card, "Ration card holder: check the PM-JAY list at the facility"),
+        (e.low_income, "Low income: check the PM-JAY list at the facility"),
+    ] if ok]
+    result, reasons = ("likely", likely) if likely else ("possibly", possibly) if possibly else ("not_likely", [])
     return EligibilityOut(result=result, reasons=reasons, documents=PMJAY_DOCUMENTS,
                           note="Indicative only, verify at the facility.")

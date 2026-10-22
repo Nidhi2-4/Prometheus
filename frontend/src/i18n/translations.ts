@@ -24,6 +24,7 @@ export const SYMPTOM_CATALOG: SymptomInfo[] = [
   { code: 'severe_headache', label: { en: 'Sudden severe headache', hi: 'अचानक तेज सिरदर्द', mr: 'अचानक तीव्र डोकेदुखी', gu: 'અચાનક તીવ્ર માથાનો દુખાવો', te: 'అకస్మాత్తుగా తీవ్రమైన తలనొప్పి', kn: 'ಹಠಾತ್ ತೀವ್ರ ತಲೆನೋವು' }, icon: Zap },
   { code: 'dizziness', label: { en: 'Dizziness', hi: 'चक्कर आना', mr: 'चक्कर येणे', gu: 'ચક્કર આવવા', te: 'తల తిరగడం', kn: 'ತಲೆಸುತ್ತು' }, icon: Orbit },
   { code: 'blurred_vision', label: { en: 'Blurred vision', hi: 'धुंधला दिखना', mr: 'अस्पष्ट दिसणे', gu: 'ઝાંખું દેખાવું', te: 'మసకగా కనిపించడం', kn: 'ಮಸುಕಾದ ದೃಷ್ಟಿ' }, icon: Eye },
+  { code: 'sudden_vision_loss', label: { en: 'Sudden loss of vision', hi: 'अचानक दिखना बंद होना', mr: 'अचानक दिसेनासे होणे', gu: 'અચાનક દેખાતું બંધ થવું', te: 'అకస్మాత్తుగా చూపు కోల్పోవడం', kn: 'ಹಠಾತ್ ದೃಷ್ಟಿ ನಷ್ಟ' }, icon: Eye },
   { code: 'one_side_weakness', label: { en: 'Weakness on one side', hi: 'एक तरफ कमजोरी', mr: 'एका बाजूला अशक्तपणा', gu: 'એક બાજુ નબળાઈ', te: 'ఒక వైపు బలహీనత', kn: 'ಒಂದು ಕಡೆ ದೌರ್ಬಲ್ಯ' }, icon: PersonStanding },
   { code: 'face_drooping', label: { en: 'Face drooping', hi: 'चेहरा टेढ़ा होना', mr: 'तोंड वाकडे होणे', gu: 'ચહેરો વાંકો થવો', te: 'ముఖం వంకరపోవడం', kn: 'ಮುಖ ಸೊಟ್ಟಗಾಗುವುದು' }, icon: CircleAlert },
   { code: 'slurred_speech', label: { en: 'Slurred speech', hi: 'बोलने में लड़खड़ाहट', mr: 'बोलताना अडखळणे', gu: 'બોલવામાં લથડાટ', te: 'మాట తడబడటం', kn: 'ಮಾತು ತೊದಲುವುದು' }, icon: MessageCircleWarning },
@@ -160,6 +161,7 @@ const en = {
   doctor_btn: 'Doctor view',
   start_over: 'Start a new check',
   saved_offline: 'Saved offline. Will complete when online.',
+  offline_estimate: 'Server not reachable. These are rough offline estimates, not model results.',
 
   care_title: 'Nearby care',
   care_emergency: 'Showing hospitals that handle emergencies.',
@@ -352,6 +354,7 @@ const hi: Strings = {
   doctor_btn: 'डॉक्टर के लिए',
   start_over: 'नई जांच शुरू करें',
   saved_offline: 'ऑफलाइन सेव हुआ। इंटरनेट आने पर पूरा होगा।',
+  offline_estimate: 'सर्वर से संपर्क नहीं हुआ। ये मॉडल के नतीजे नहीं, अनुमानित ऑफलाइन आँकड़े हैं।',
 
   care_title: 'नजदीकी इलाज',
   care_emergency: 'आपातकाल संभालने वाले अस्पताल दिखा रहे हैं।',
@@ -542,6 +545,7 @@ const mr: Strings = {
   doctor_btn: 'डॉक्टरांसाठी',
   start_over: 'नवीन तपासणी सुरू करा',
   saved_offline: 'ऑफलाइन सेव्ह झाले. इंटरनेट आल्यावर पूर्ण होईल.',
+  offline_estimate: 'सर्व्हरशी संपर्क झाला नाही. हे मॉडेलचे निकाल नाहीत, अंदाजे ऑफलाइन आकडे आहेत.',
 
   care_title: 'जवळचे उपचार',
   care_emergency: 'आपत्कालीन सेवा असलेली रुग्णालये दाखवत आहोत.',
@@ -732,6 +736,7 @@ const gu: Strings = {
   doctor_btn: 'ડૉક્ટર માટે',
   start_over: 'નવી તપાસ શરૂ કરો',
   saved_offline: 'ઑફલાઇન સેવ થયું. ઇન્ટરનેટ આવશે ત્યારે પૂરું થશે.',
+  offline_estimate: 'સર્વર સાથે સંપર્ક થયો નથી. આ મૉડલનાં પરિણામો નથી, અંદાજિત ઑફલાઇન આંકડા છે.',
 
   care_title: 'નજીકની સારવાર',
   care_emergency: 'ઇમરજન્સી સંભાળતી હોસ્પિટલો બતાવી રહ્યા છીએ.',
@@ -922,6 +927,7 @@ const te: Strings = {
   doctor_btn: 'డాక్టర్ కోసం',
   start_over: 'కొత్త పరీక్ష ప్రారంభించండి',
   saved_offline: 'ఆఫ్‌లైన్‌లో సేవ్ అయింది. ఇంటర్నెట్ వచ్చినప్పుడు పూర్తవుతుంది.',
+  offline_estimate: 'సర్వర్‌ను చేరుకోలేకపోయాం. ఇవి మోడల్ ఫలితాలు కావు, సుమారు ఆఫ్‌లైన్ అంచనాలు.',
 
   care_title: 'దగ్గరి చికిత్స',
   care_emergency: 'అత్యవసర సేవలు ఉన్న ఆసుపత్రులను చూపిస్తున్నాం.',
@@ -1112,6 +1118,7 @@ const kn: Strings = {
   doctor_btn: 'ವೈದ್ಯರಿಗಾಗಿ',
   start_over: 'ಹೊಸ ತಪಾಸಣೆ ಪ್ರಾರಂಭಿಸಿ',
   saved_offline: 'ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ. ಇಂಟರ್ನೆಟ್ ಬಂದಾಗ ಪೂರ್ಣಗೊಳ್ಳುತ್ತದೆ.',
+  offline_estimate: 'ಸರ್ವರ್ ಸಂಪರ್ಕ ಸಿಗಲಿಲ್ಲ. ಇವು ಮಾದರಿಯ ಫಲಿತಾಂಶಗಳಲ್ಲ, ಅಂದಾಜು ಆಫ್‌ಲೈನ್ ಅಂಕಿಗಳು.',
 
   care_title: 'ಹತ್ತಿರದ ಚಿಕಿತ್ಸೆ',
   care_emergency: 'ತುರ್ತು ಸೇವೆ ಇರುವ ಆಸ್ಪತ್ರೆಗಳನ್ನು ತೋರಿಸಲಾಗುತ್ತಿದೆ.',

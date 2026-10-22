@@ -14,6 +14,7 @@ export type SymptomCode =
   | 'severe_headache'
   | 'dizziness'
   | 'blurred_vision'
+  | 'sudden_vision_loss'
   | 'one_side_weakness'
   | 'face_drooping'
   | 'slurred_speech'
@@ -68,8 +69,8 @@ export interface HeartRateResult {
 export interface RedFlagRule {
   id: string;
   message_key: string;
-  name: string;
-  description: string;
+  name?: string;        // local engine only; backend sends id + message_key
+  description?: string;
 }
 
 export interface RiskFactor {
@@ -83,7 +84,9 @@ export interface ConditionRisk {
   probability: number;
   level: RiskLevel;
   model_version: string;
+  class_probabilities?: { low: number; mid: number; high: number } | null; // maternal only
   top_factors: RiskFactor[];
+  note?: string | null; // caveat to show on the card, already translated
 }
 
 export interface AssessmentResponse {
@@ -100,14 +103,14 @@ export interface Facility {
   type: 'phc' | 'chc' | 'district_hospital' | 'medical_college' | 'private';
   lat: number;
   lng: number;
-  phone: string;
+  phone: string | null;
   distance_km: number;
   travel_min: number;
-  doctor_available: boolean;
-  doctor_arrives_in_min: number;
-  queue_wait_min: number;
-  time_to_doctor_min: number;
-  availability_updated_min_ago: number;
+  doctor_available: boolean | null; // null = unknown or stale
+  doctor_arrives_in_min: number | null;
+  queue_wait_min: number | null;
+  time_to_doctor_min: number | null;
+  availability_updated_min_ago: number | null;
   cost_tier: 'free' | 'subsidized' | 'paid';
   pmjay_empanelled: boolean;
   has_maternity?: boolean;

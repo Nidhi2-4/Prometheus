@@ -53,6 +53,7 @@ export default function App() {
   const [hr, setHr] = useState<HeartRateResult | null>(null);
   const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
   const [savedOffline, setSavedOffline] = useState(false);
+  const [offlineResult, setOfflineResult] = useState(false);
   const [coords, setCoords] = useState<GeoCoordinates>(DISTRICT_FALLBACKS.Nagpur);
   const [gpsFailed, setGpsFailed] = useState(false);
   const [alertRules, setAlertRules] = useState<RedFlagRule[]>([]);
@@ -129,6 +130,7 @@ export default function App() {
     const queued = offline && !navigator.onLine;
     if (queued) await queueAssessmentOffline({ id: result.assessment_id, timestamp: new Date().toISOString(), payload, localAssessment: result });
     setSavedOffline(queued);
+    setOfflineResult(offline);
     setAssessment(result);
     setEmergencyFrom(null);
     setBusy(false);
@@ -351,6 +353,7 @@ export default function App() {
           return (
             <>
               {savedOffline && <p className="card">{t.saved_offline}</p>}
+              {offlineResult && !savedOffline && <p className="card">{t.offline_estimate}</p>}
               <h1>{t.result_title}</h1>
               <div className={`triage triage-${level}`}>
                 <Icon size={32} style={{ flex: 'none' }} />
@@ -371,6 +374,7 @@ export default function App() {
                   </div>
                   <div className="bar"><div className={`level-${r.level}`} style={{ width: `${Math.round(r.probability * 100)}%` }} /></div>
                   <ul className="reasons">{r.top_factors.slice(0, 3).map((x) => <li key={x.feature}>{x.text}</li>)}</ul>
+                  {r.note && <p className="small">{r.note}</p>}
                   <p className="small muted">{t.model_version} {r.model_version}</p>
                 </section>
               ))}

@@ -132,6 +132,6 @@ export function getRankedFacilities(
   }
 
   // Rank by time_to_doctor_min
-  list.sort((a, b) => a.time_to_doctor_min - b.time_to_doctor_min);
+  list.sort((a, b) => (a.time_to_doctor_min ?? Infinity) - (b.time_to_doctor_min ?? Infinity));
   return list;
 }

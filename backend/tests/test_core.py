@@ -46,6 +46,13 @@ def test_red_flags():
     assert ids(symptoms=["convulsions"]) == ["RF10"]
 
 
+def test_pmjay():
+    from app.schemas import EligibilityIn
+    assert rules.pmjay_eligibility(EligibilityIn(senior_70_plus=True)).result == "likely"
+    assert rules.pmjay_eligibility(EligibilityIn(ration_card=True)).result == "possibly"
+    assert rules.pmjay_eligibility(EligibilityIn()).result == "not_likely"
+
+
 def rr(condition, level):
     return RiskResult(condition=condition, probability=0.5, level=level, model_version="t", top_factors=[])
 

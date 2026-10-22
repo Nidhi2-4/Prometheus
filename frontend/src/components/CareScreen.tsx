@@ -61,9 +61,10 @@ export function CareScreen({ t, facilities, coords, onDistrict, gpsFailed, emerg
       {facilities.map((f) => (
         <section key={f.id} id={f.id} className={`card facility${selected === f.id ? ' selected' : ''}`}>
           <h2>{f.name}</h2>
-          <p className="big">{t.min_to_doctor(f.time_to_doctor_min)}</p>
+          {f.time_to_doctor_min != null && <p className="big">{t.min_to_doctor(f.time_to_doctor_min)}</p>}
           <p>
-            {f.availability_updated_min_ago > 30 ? t.availability_unknown : (
+            {/* null = no data, stale (> 30 min) or no doctor of the needed type reported */}
+            {f.doctor_available == null || f.doctor_arrives_in_min == null ? t.availability_unknown : (
               <>
                 <span className="dot" style={{ background: f.doctor_available ? 'var(--teal)' : 'var(--mint)' }} />
                 {f.doctor_available ? t.doctor_now : t.doctor_in(f.doctor_arrives_in_min)}
@@ -77,7 +78,7 @@ export function CareScreen({ t, facilities, coords, onDistrict, gpsFailed, emerg
             {" · "}<Star size={14} aria-hidden /> {f.rating} ({f.review_count})
           </p>
           <div className="row">
-            <a className="btn btn-small" href={`tel:${f.phone}`}><Phone size={18} /> {t.call}</a>
+            {f.phone && <a className="btn btn-small" href={`tel:${f.phone}`}><Phone size={18} /> {t.call}</a>}
             <a className="btn btn-small btn-primary" href={`https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lng}`} target="_blank" rel="noreferrer">
               <Navigation size={18} /> {t.directions}
             </a>

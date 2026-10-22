@@ -271,9 +271,9 @@ See section 6.
 #### PM-JAY eligibility
 
 ```json
-// request: 4 simple questions
-{ "age": 72, "has_pmjay_card": false, "secc_listed": false, "ration_card": "phh" }
-// ration_card: "none" | "aay" (Antyodaya) | "phh" (priority household) | "apl"
+// request: 4 yes/no questions
+{ "ration_card": true, "bpl": false, "senior_70_plus": true, "low_income": false }
+// likely: senior_70_plus or bpl. possibly: ration_card or low_income. Otherwise not_likely.
 
 // response
 { "result": "likely", "reasons": ["Age 70 or above (Ayushman Vay Vandana, any income)"],

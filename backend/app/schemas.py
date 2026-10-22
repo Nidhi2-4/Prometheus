@@ -11,7 +11,7 @@ Symptom = Literal[
     "swelling", "vaginal_bleeding", "reduced_baby_movement", "convulsions",
     "confusion", "extreme_drowsiness", "fruity_breath", "persistent_vomiting",
 ]
-Language = Literal["en", "hi", "mr"]
+Language = Literal["en", "hi", "mr", "gu", "te", "kn"]
 Triage = Literal["emergency", "urgent", "routine", "self_care"]
 Level = Literal["low", "medium", "high"]
 Condition = Literal["hypertension", "diabetes", "cvd", "maternal"]
@@ -148,11 +148,11 @@ class FacilityOut(BaseModel):
     simulated_fields: list[str]
 
 
-class EligibilityIn(BaseModel):
-    age: int = Field(ge=0, le=120)
-    has_pmjay_card: bool = False
-    secc_listed: bool = False  # family appears in the SECC 2011 deprivation list
-    ration_card: Literal["none", "aay", "phh", "apl"] = "none"  # aay = Antyodaya, phh = priority household
+class EligibilityIn(BaseModel):  # the frontend's four yes/no questions
+    ration_card: bool = False      # family has a ration card
+    bpl: bool = False              # BPL / Antyodaya card or listed as deprived
+    senior_70_plus: bool = False   # someone in the family is 70 or older
+    low_income: bool = False
 
 
 class EligibilityOut(BaseModel):
